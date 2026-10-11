@@ -1,15 +1,22 @@
 // Промышленная инженерная 3D-модель дуговой сталеплавильной печи ДСП-135 (ЭСПЦ БМЗ, проект Danieli / SMS)
 // Высокодетализированная CAD/SCADA визуализация на базе Three.js
 
-import * as THREE from '../node_modules/three/build/three.module.js';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 export class Furnace3D {
   constructor(containerId) {
     this.container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
     if (!this.container) return;
+    window.furnace3D = this;
 
     this.mode = 'cutaway'; // 'cutaway' | 'shell' | 'thermal' | 'wireframe'
     this.autoRotate = false;
+    this.glbLoaded = false;
+    this.arcGlows = [];
+    this.arcHalos = [];
+    this.arcLights = [];
     this.params = {
       temp_c: 1580,
       power_mw: 38,
@@ -44,8 +51,7 @@ export class Furnace3D {
     this.initScene();
     this.initProceduralTextures();
     this.initMaterials();
-    this.buildShopEnvironment();
-    this.buildFurnaceAssembly();
+    this.loadBlenderGlbModel('models/dsp135.glb');
     this.setupEvents();
 
     this.lastTime = performance.now();
@@ -349,15 +355,30 @@ export class Furnace3D {
         color: 0x70757d,
         transparent: true,
         opacity: 0.24
+      }),
+      shopFloor: new THREE.MeshStandardMaterial({
+        color: 0x141618,
+        roughness: 0.95,
+        metalness: 0.08
       })
     };
+
+    Object.entries(this.materials).forEach(([key, mat]) => {
+      mat.name = key;
+      mat.userData = { matKey: key };
+    });
   }
 
   // Вспомогательный метод добавления инженерного CAD-контура детали
   addCadEdges(mesh, threshold = 28) {
     if (!mesh || !mesh.geometry) return mesh;
+    mesh.userData = mesh.userData || {};
+    mesh.userData.hasCadEdges = true;
+    mesh.userData.edgeThreshold = threshold;
     const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, threshold);
     const line = new THREE.LineSegments(edgesGeo, this.materials.edgeLine);
+    line.name = 'CAD_Edge';
+    line.userData = { isCadEdge: true };
     mesh.add(line);
     return mesh;
   }
@@ -367,21 +388,20 @@ export class Furnace3D {
   // ============================================================================
   buildShopEnvironment() {
     this.envGroup = new THREE.Group();
+    this.envGroup.name = 'Shop_Environment';
     this.scene.add(this.envGroup);
 
     // Координатная сетка цеха на отметке -4.3м
     const grid = new THREE.GridHelper(32, 32, 0x32353b, 0x202226);
+    grid.name = 'Shop_Grid';
     grid.position.y = -4.29;
     this.envGroup.add(grid);
 
     // Пол цеха
     const floorGeo = new THREE.PlaneGeometry(45, 45);
     floorGeo.rotateX(-Math.PI / 2);
-    const floorMesh = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({
-      color: 0x141618,
-      roughness: 0.95,
-      metalness: 0.08
-    }));
+    const floorMesh = new THREE.Mesh(floorGeo, this.materials.shopFloor);
+    floorMesh.name = 'Shop_Floor';
     floorMesh.position.y = -4.3;
     floorMesh.receiveShadow = true;
     this.envGroup.add(floorMesh);
@@ -576,16 +596,204 @@ export class Furnace3D {
   }
 
   // ============================================================================
-  // 5. СБОРКА ДУГОВОЙ ПЕЧИ ДСП-135 (НАКЛОНЯЕМАЯ ПЛАТФОРМА)
+  // 5. ЗАГРУЗКА 3D-МОДЕЛИ BLENDER / GLB ИЛИ СБОРКА ДСП-135
   // ============================================================================
+  loadBlenderGlbModel(url = 'models/dsp135.glb') {
+    // Сначала задаем опорные координаты клемм трансформатора и рукавов для гибких кабелей
+    this.transTerminals = [
+      new THREE.Vector3(-1.15, 2.45, -4.75),
+      new THREE.Vector3(0.0, 2.45, -4.75),
+      new THREE.Vector3(1.15, 2.45, -4.75)
+    ];
+    this.cableArmAnchors = [
+      new THREE.Vector3(-1.15, 4.55, -4.15),
+      new THREE.Vector3(0.0, 4.55, -4.15),
+      new THREE.Vector3(1.15, 4.55, -4.15)
+    ];
+
+    const loader = new GLTFLoader();
+    loader.load(
+      url,
+      gltf => {
+        this.bindLoadedGlbScene(gltf.scene);
+      },
+      undefined,
+      () => {
+        // Если файл models/dsp135.glb еще не сгенерирован, собираем эталонную сцену
+        this.buildShopEnvironment();
+        this.buildFurnaceAssembly();
+      }
+    );
+  }
+
+  bindLoadedGlbScene(gltfRoot) {
+    if (this.envGroup) this.scene.remove(this.envGroup);
+    if (this.tiltPivot) this.scene.remove(this.tiltPivot);
+    if (this.cablesGroup) this.scene.remove(this.cablesGroup);
+    if (this.tappingStream) this.scene.remove(this.tappingStream);
+
+    this.arcGlows = [];
+    this.arcHalos = [];
+    this.arcLights = [];
+
+    const meshesToEdge = [];
+
+    gltfRoot.traverse(node => {
+      if (node.name === 'Shop_Environment') this.envGroup = node;
+      if (node.name === 'Furnace_Tilt_Group') this.tiltPivot = node;
+      if (node.name === 'Furnace_Root') this.furnaceRoot = node;
+      if (node.name === 'Rocker_Cradle') this.cradleGroup = node;
+      if (node.name === 'Shell_Full') this.shellFull = node;
+      if (node.name === 'Shell_Cut') this.shellCut = node;
+      if (node.name === 'Bath_Group') this.bathGroup = node;
+      if (node.name === 'Liquid_Bath_Body') this.meltBody = node;
+      if (node.name === 'Liquid_Bath') this.meltSurface = node;
+      if (node.name === 'Slag_Ring') this.slagRing = node;
+      if (node.name === 'Scrap_Group') this.scrapGroup = node;
+      if (node.name === 'Roof_Swing_Pivot') this.roofSwingPivot = node;
+      if (node.name === 'Roof_Assembly') this.roofGroup = node;
+      if (node.name === 'Gantry_Base') this.gantryBase = node;
+      if (node.name === 'Electrode_Group') this.electrodeGroup = node;
+
+      if (node.isMesh) {
+        const matKey = (node.userData && node.userData.matKey) || (node.material && node.material.name);
+        if (matKey && this.materials[matKey]) {
+          if (matKey === 'arcPlasma' || matKey === 'arcHalo') {
+            node.material = this.materials[matKey].clone();
+          } else {
+            node.material = this.materials[matKey];
+          }
+        }
+        if (node.userData) {
+          if (node.userData.castShadow !== undefined) node.castShadow = Boolean(node.userData.castShadow);
+          if (node.userData.receiveShadow !== undefined) node.receiveShadow = Boolean(node.userData.receiveShadow);
+          if (node.userData.hasCadEdges) {
+            meshesToEdge.push({ mesh: node, threshold: node.userData.edgeThreshold || 28 });
+          }
+        }
+      }
+    });
+
+    ['Arc_1', 'Arc_2', 'Arc_3'].forEach(n => {
+      const m = gltfRoot.getObjectByName(n);
+      if (m) this.arcGlows.push(m);
+    });
+    ['Arc_Halo_1', 'Arc_Halo_2', 'Arc_Halo_3'].forEach(n => {
+      const m = gltfRoot.getObjectByName(n);
+      if (m) this.arcHalos.push(m);
+    });
+
+    meshesToEdge.forEach(({ mesh, threshold }) => this.addCadEdges(mesh, threshold));
+
+    if (this.envGroup) {
+      this.scene.add(this.envGroup);
+      const grid = new THREE.GridHelper(32, 32, 0x32353b, 0x202226);
+      grid.name = 'Shop_Grid';
+      grid.position.y = -4.29;
+      this.envGroup.add(grid);
+    }
+
+    if (this.tiltPivot) {
+      this.scene.add(this.tiltPivot);
+    }
+
+    if (this.furnaceRoot) {
+      const deltaRad = 0.86;
+      [Math.PI / 2 + (Math.PI * 2) / 3, Math.PI / 2, Math.PI / 2 + (Math.PI * 4) / 3].forEach(ang => {
+        const ex = Math.cos(ang) * deltaRad;
+        const ez = Math.sin(ang) * deltaRad;
+        const arcLight = new THREE.PointLight(0xa3e5ff, 0, 7.5, 1.7);
+        arcLight.position.set(ex, 0.45, ez);
+        this.furnaceRoot.add(arcLight);
+        this.arcLights.push(arcLight);
+      });
+    }
+
+    this.buildFlexibleCables();
+    this.buildTappingStream();
+
+    this.glbLoaded = true;
+    this.applyMode();
+    this.update(this.params);
+  }
+
+  // Экспорт эталонной модели в бинарный формат Blender / glTF 2.0 (.glb)
+  async exportGlbBinary() {
+    if (!this.envGroup || !this.tiltPivot) {
+      this.buildShopEnvironment();
+      this.buildFurnaceAssembly();
+    }
+
+    // Сбрасываем динамические смещения перед экспортом эталонной геометрии
+    if (this.tiltPivot) this.tiltPivot.rotation.set(0, 0, 0);
+    if (this.roofSwingPivot) this.roofSwingPivot.rotation.set(0, 0, 0);
+    if (this.electrodeGroup) this.electrodeGroup.position.set(0, 0, 0);
+    if (this.scrapGroup) {
+      this.scrapGroup.visible = true;
+      this.scrapGroup.scale.set(1, 1, 1);
+    }
+    if (this.shellFull) this.shellFull.visible = true;
+    if (this.shellCut) this.shellCut.visible = true;
+    this.arcGlows.forEach(a => { a.visible = true; a.scale.set(1, 1, 1); });
+    this.arcHalos.forEach(h => { h.visible = true; h.scale.set(1, 1, 1); });
+
+    const exportRoot = new THREE.Scene();
+    exportRoot.name = 'DSP135_Blender_Twin';
+
+    const cloneForGlb = srcGroup => {
+      const clone = srcGroup.clone(true);
+      const toRemove = [];
+      clone.traverse(node => {
+        if (node.isLineSegments || node.isGridHelper || node.isLight) {
+          toRemove.push(node);
+          return;
+        }
+        if (node.isMesh) {
+          node.userData = node.userData || {};
+          const matKey = (node.material && node.material.userData && node.material.userData.matKey) || (node.material && node.material.name);
+          if (matKey) node.userData.matKey = matKey;
+          node.userData.castShadow = node.castShadow;
+          node.userData.receiveShadow = node.receiveShadow;
+          // Заменяем текстурный материал на легкий PBR-материал без CanvasTexture для компактного .glb
+          const baseMat = node.material;
+          node.material = new THREE.MeshStandardMaterial({
+            name: matKey || 'steel',
+            color: baseMat && baseMat.color ? baseMat.color.clone() : new THREE.Color(0x5c6066),
+            roughness: baseMat && baseMat.roughness !== undefined ? baseMat.roughness : 0.5,
+            metalness: baseMat && baseMat.metalness !== undefined ? baseMat.metalness : 0.5
+          });
+        }
+      });
+      toRemove.forEach(n => {
+        if (n.parent) n.parent.remove(n);
+      });
+      return clone;
+    };
+
+    exportRoot.add(cloneForGlb(this.envGroup));
+    exportRoot.add(cloneForGlb(this.tiltPivot));
+
+    const exporter = new GLTFExporter();
+    return new Promise((resolve, reject) => {
+      exporter.parse(
+        exportRoot,
+        result => resolve(result),
+        err => reject(err),
+        { binary: true, onlyVisible: false }
+      );
+    });
+  }
+
   buildFurnaceAssembly() {
     // Главный узел наклона (вращается вокруг оси Z при выпуске и скачивании шлака)
     this.tiltPivot = new THREE.Group();
+    this.tiltPivot.name = 'Furnace_Tilt_Group';
     this.tiltPivot.position.set(0, -1.65, 0);
     this.scene.add(this.tiltPivot);
 
     // Смещение внутри люльки так, чтобы координаты кожуха оставались удобными
     this.furnaceRoot = new THREE.Group();
+    this.furnaceRoot.name = 'Furnace_Root';
     this.furnaceRoot.position.set(0, 1.65, 0);
     this.tiltPivot.add(this.furnaceRoot);
 
@@ -604,6 +812,7 @@ export class Furnace3D {
   // 5.1 Люлька качения и гидропривод наклона (Rocker Cradle)
   buildRockerCradle() {
     this.cradleGroup = new THREE.Group();
+    this.cradleGroup.name = 'Rocker_Cradle';
     this.furnaceRoot.add(this.cradleGroup);
 
     // Профиль дугового сегмента люльки (ExtrudeGeometry)
@@ -675,7 +884,9 @@ export class Furnace3D {
   // 5.2 Кожух печи, водоохлаждаемые панели, эркер EBT и многослойная футеровка
   buildVesselAndRefractory() {
     this.shellFull = new THREE.Group();
+    this.shellFull.name = 'Shell_Full';
     this.shellCut = new THREE.Group();
+    this.shellCut.name = 'Shell_Cut';
     this.furnaceRoot.add(this.shellFull);
     this.furnaceRoot.add(this.shellCut);
 
@@ -848,6 +1059,7 @@ export class Furnace3D {
   // 5.3 Ванна жидкого металла, вспененный шлак и куча металлолома (для стадии Завалка)
   buildMeltAndScrap() {
     this.bathGroup = new THREE.Group();
+    this.bathGroup.name = 'Bath_Group';
     this.furnaceRoot.add(this.bathGroup);
 
     const R_melt = 2.84;
@@ -855,6 +1067,7 @@ export class Furnace3D {
     // 1. Объем жидкой стали в подине
     const meltBodyGeo = new THREE.CylinderGeometry(R_melt, 2.35, 0.78, 40);
     this.meltBody = new THREE.Mesh(meltBodyGeo, this.materials.meltSection);
+    this.meltBody.name = 'Liquid_Bath_Body';
     this.meltBody.position.y = -0.15;
     this.bathGroup.add(this.meltBody);
 
@@ -862,6 +1075,7 @@ export class Furnace3D {
     const surfaceGeo = new THREE.CircleGeometry(R_melt, 44);
     surfaceGeo.rotateX(-Math.PI / 2);
     this.meltSurface = new THREE.Mesh(surfaceGeo, this.materials.meltSurface);
+    this.meltSurface.name = 'Liquid_Bath';
     this.meltSurface.position.y = 0.25;
     this.bathGroup.add(this.meltSurface);
 
@@ -869,11 +1083,13 @@ export class Furnace3D {
     const slagRingGeo = new THREE.RingGeometry(1.85, R_melt + 0.02, 40);
     slagRingGeo.rotateX(-Math.PI / 2);
     this.slagRing = new THREE.Mesh(slagRingGeo, this.materials.slagLayer);
+    this.slagRing.name = 'Slag_Ring';
     this.slagRing.position.y = 0.265;
     this.bathGroup.add(this.slagRing);
 
     // 4. Крупногабаритный стальной лом (шихта) — виден при Завалке и начале Плавления
     this.scrapGroup = new THREE.Group();
+    this.scrapGroup.name = 'Scrap_Group';
     this.scrapGroup.position.y = 0.2;
     const scrapGeos = [
       new THREE.BoxGeometry(0.75, 0.25, 0.45),
@@ -904,10 +1120,12 @@ export class Furnace3D {
   buildRoofAndDelta() {
     // Узел поворота свода вокруг колонны портала
     this.roofSwingPivot = new THREE.Group();
+    this.roofSwingPivot.name = 'Roof_Swing_Pivot';
     this.roofSwingPivot.position.set(-2.35, 1.92, -3.55);
     this.furnaceRoot.add(this.roofSwingPivot);
 
     this.roofGroup = new THREE.Group();
+    this.roofGroup.name = 'Roof_Assembly';
     this.roofGroup.position.set(2.35, 0, 3.55);
     this.roofSwingPivot.add(this.roofGroup);
 
@@ -1023,6 +1241,7 @@ export class Furnace3D {
   // 5.5 Портал, колонны мачт, токоведущие рукава и графитовые электроды
   buildGantryMastsAndArms() {
     this.gantryBase = new THREE.Group();
+    this.gantryBase.name = 'Gantry_Base';
     this.furnaceRoot.add(this.gantryBase);
 
     // Массивный опорный портал позади печи
@@ -1056,6 +1275,7 @@ export class Furnace3D {
 
     // Подвижная группа электродов и рукавов (перемещается вверх-вниз по мачтам)
     this.electrodeGroup = new THREE.Group();
+    this.electrodeGroup.name = 'Electrode_Group';
     this.furnaceRoot.add(this.electrodeGroup);
 
     this.arcGlows = [];
@@ -1075,11 +1295,12 @@ export class Furnace3D {
     const elRadius = 0.23; // Электрод Ø460–500 мм в масштабе
     const elLength = 5.4;
 
-    elConfigs.forEach(cfg => {
+    elConfigs.forEach((cfg, idx) => {
       const ex = Math.cos(cfg.ang) * deltaRad;
       const ez = Math.sin(cfg.ang) * deltaRad;
 
       const phaseAssembly = new THREE.Group();
+      phaseAssembly.name = `Phase_${idx + 1}`;
 
       // 1. Каретка на мачте
       const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.52, 1.15, 0.56), this.materials.heavySteel);
@@ -1117,6 +1338,7 @@ export class Furnace3D {
 
       // 4. Колонна графитового электрода (из 3 свинченных секций с ниппельными поясками)
       const elColumn = new THREE.Group();
+      elColumn.name = `Electrode_${idx + 1}`;
       elColumn.position.set(ex, 2.75, ez);
 
       const mainShaft = new THREE.Mesh(new THREE.CylinderGeometry(elRadius, elRadius, elLength - 0.55, 28), this.materials.graphite);
@@ -1139,12 +1361,16 @@ export class Furnace3D {
 
       // 5. Плазменный столб электрической дуги и ореол ионизации
       const arcCore = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.34, 0.52, 16), this.materials.arcPlasma.clone());
+      arcCore.name = `Arc_${idx + 1}`;
+      arcCore.userData = { matKey: 'arcPlasma' };
       arcCore.position.y = -elLength / 2 - 0.12;
       arcCore.visible = false;
       elColumn.add(arcCore);
       this.arcGlows.push(arcCore);
 
       const arcHalo = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 12), this.materials.arcHalo.clone());
+      arcHalo.name = `Arc_Halo_${idx + 1}`;
+      arcHalo.userData = { matKey: 'arcHalo' };
       arcHalo.position.y = -elLength / 2 - 0.1;
       arcHalo.visible = false;
       elColumn.add(arcHalo);
@@ -1190,7 +1416,7 @@ export class Furnace3D {
   }
 
   updateFlexibleCables() {
-    if (!this.cableMeshes || !this.transTerminals || !this.cableArmAnchors) return;
+    if (!this.cableMeshes || !this.transTerminals || !this.cableArmAnchors || !this.electrodeGroup || !this.furnaceRoot) return;
 
     this.cableMeshes.forEach(item => {
       const { phase, offsetX, mesh } = item;
@@ -1335,12 +1561,12 @@ export class Furnace3D {
       this.materials.copperBus.emissive.setHex(0x802b00);
       this.materials.copperBus.emissiveIntensity = 0.5;
     } else {
-      this.materials.heavySteel.color.setHex(0x526173);
+      this.materials.heavySteel.color.setHex(0x5c6066);
       this.materials.heavySteel.emissive.setHex(0x000000);
-      this.materials.coolingPanel.color.setHex(0x5e748c);
+      this.materials.coolingPanel.color.setHex(0x666c73);
       this.materials.coolingPanel.emissive.setHex(0x000000);
       this.materials.coolingPanel.emissiveIntensity = 0.0;
-      this.materials.structuralBeam.color.setHex(0x3e4c5e);
+      this.materials.structuralBeam.color.setHex(0x45494f);
       this.materials.copperBus.emissive.setHex(0x000000);
       this.materials.copperBus.emissiveIntensity = 0.0;
     }
@@ -1462,7 +1688,7 @@ export class Furnace3D {
     // 2. Кинематика узлов печи (мачты электродов, отворот свода, наклон люльки)
     let cablesNeedUpdate = false;
 
-    if (Math.abs(this.targetElectrodeY - this.electrodeGroup.position.y) > 0.002) {
+    if (this.electrodeGroup && Math.abs(this.targetElectrodeY - this.electrodeGroup.position.y) > 0.002) {
       this.electrodeGroup.position.y += (this.targetElectrodeY - this.electrodeGroup.position.y) * 0.08;
       cablesNeedUpdate = true;
     }
