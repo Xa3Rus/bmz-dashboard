@@ -173,7 +173,7 @@ async function loadDashboard() {
   }
 
   const actives = s.actives || [];
-  const totalFurnaces = s.plc?.totalFurnaces || (s.plc?.furnaces || []).length || 4;
+  const totalFurnaces = s.plc?.totalFurnaces ?? (s.plc?.furnaces || []).length;
   setDashboardConnectedLayout(actives.length > 0);
 
   if (actives.length > 0) {
@@ -185,10 +185,10 @@ async function loadDashboard() {
       updateMeltTitles(s.active);
     }
   }
-  await tickLive(false);
+  await tickLive();
 }
 
-function renderFurnaceFleet(actives, totalFurnaces = 4) {
+function renderFurnaceFleet(actives, totalFurnaces = 0) {
   const bar = document.getElementById('furnaceFleetBar');
   if (!bar || !Array.isArray(actives)) return;
 
@@ -199,8 +199,8 @@ function renderFurnaceFleet(actives, totalFurnaces = 4) {
     const pct = Math.min(100, Math.max(0, ((m.t_min || 0) / (m.duration_min || 65)) * 100));
     const stName = m.stage || stageName(m.t_min || 0, m.duration_min || 65);
     const plcBadge = m.plc_source === 'PLC_LIVE'
-      ? `<span class="fleet-src-badge plc-live">ПЛК</span>`
-      : `<span class="fleet-src-badge model">ПОДКЛ.</span>`;
+      ? `<span class="fleet-src-badge plc-live">ПЛК ОНЛАЙН</span>`
+      : `<span class="fleet-src-badge waiting">ОЖИД. ПЛК</span>`;
 
     return `
       <div class="fleet-card ${isSel ? 'active' : ''}" data-furnace="${fNo}">
@@ -235,7 +235,7 @@ function renderFurnaceFleet(actives, totalFurnaces = 4) {
     : `
       <div class="fleet-card fleet-add-card" id="fleetAddFurnaceBtn" title="Добавить новую печь (ПЛК) в систему">
         <div class="fleet-add-title">+ ДОБАВИТЬ ПЕЧЬ (ПЛК)</div>
-        <div class="fleet-add-sub">В работе все ${totalFurnaces} из ${totalFurnaces} печей</div>
+        <div class="fleet-add-sub">В работе печей: ${actives.length}</div>
       </div>
     `;
 
@@ -248,7 +248,7 @@ function renderFurnaceFleet(actives, totalFurnaces = 4) {
         selectedFurnaceNo = fNo;
         previewStageOverride = null;
         document.querySelectorAll('.step-node').forEach(n => n.classList.remove('preview-selected'));
-        tickLive(false);
+        tickLive();
       }
     });
   });
@@ -326,7 +326,7 @@ async function tickLive() {
   document.getElementById('kpiDuration').textContent = sum.avgDuration;
 
   const actives = sum.actives || [];
-  const totalFurnaces = sum.plc?.totalFurnaces || (sum.plc?.furnaces || []).length || 4;
+  const totalFurnaces = sum.plc?.totalFurnaces ?? (sum.plc?.furnaces || []).length;
   setDashboardConnectedLayout(actives.length > 0);
   if (!actives.length || !sum.active) {
     return;
@@ -746,24 +746,25 @@ async function loadGradesReference() {
 // 8. Шлюз АСУ ТП и подключение реальных ПЛК (OPC UA / Modbus TCP / MQTT / HTTP)
 // ==========================================================================
 let plcUnitsRenderedOnce = false;
-let lastFurnaceListSig = '';
+let lastFurnaceListSig = '__init__';
 
 function syncGlobalPlcBadges(plc) {
   if (!plc) return;
   const furnaces = plc.furnaces || [];
-  const totalCount = plc.totalFurnaces ?? (furnaces.length || 4);
+  const totalCount = plc.totalFurnaces ?? furnaces.length;
   const connCount = plc.connectedCount ?? furnaces.filter(u => u.connected).length;
 
   const navBadge = document.getElementById('navPlcBadge');
   if (navBadge) {
-    navBadge.textContent = `${connCount}/${totalCount}`;
+    navBadge.textContent = totalCount > 0 ? `${connCount}/${totalCount}` : '0';
     navBadge.classList.toggle('live-chip', connCount > 0);
   }
 
   const connState = document.getElementById('connState');
   if (connState) {
+    const countLabel = totalCount > 0 ? `${connCount}/${totalCount}` : '0';
     connState.textContent = plc.gatewayRunning
-      ? `ПЕЧЕЙ: ${connCount}/${totalCount} · ШЛЮЗ :${plc.gatewayPort}`
+      ? `ПЕЧЕЙ: ${countLabel} · ШЛЮЗ :${plc.gatewayPort}`
       : 'БД: SQLite CONNECTED';
   }
 
@@ -773,29 +774,21 @@ function syncGlobalPlcBadges(plc) {
     lastFurnaceListSig = listSig;
 
     const emptySlotsEl = document.getElementById('dashEmptySlots');
-    if (emptySlotsEl && furnaces.length) {
-      emptySlotsEl.innerHTML = furnaces.map(f => {
-        const title = f.name || `ДСП-135 №${f.furnace_no}`;
-        return `<div class="dash-slot-chip">${title} · <span>${f.connected ? 'ПОДКЛЮЧЕНА' : 'ОТКЛЮЧЕНА'}</span></div>`;
-      }).join('');
-    }
-
-    const injSel = document.getElementById('injFurnace');
-    if (injSel && furnaces.length) {
-      const prevVal = injSel.value;
-      injSel.innerHTML = furnaces.map(f => {
-        const title = f.name || `ДСП-135 №${f.furnace_no}`;
-        return `<option value="${f.furnace_no}">${title} (${f.controller})</option>`;
-      }).join('');
-      if (furnaces.some(f => String(f.furnace_no) === prevVal)) {
-        injSel.value = prevVal;
+    if (emptySlotsEl) {
+      if (!furnaces.length) {
+        emptySlotsEl.innerHTML = `<div class="dash-slot-chip" style="grid-column: 1 / -1;">В СИСТЕМЕ ЕЩЁ НЕ ДОБАВЛЕНО НИ ОДНОЙ ПЕЧИ · <span>НАЖМИТЕ «+ ДОБАВИТЬ ПЕЧЬ (ПЛК)»</span></div>`;
+      } else {
+        emptySlotsEl.innerHTML = furnaces.map(f => {
+          const title = f.name || `ДСП-135 №${f.furnace_no}`;
+          return `<div class="dash-slot-chip">${title} · <span>${f.connected ? 'ПОДКЛЮЧЕНА' : 'ОТКЛЮЧЕНА'}</span></div>`;
+        }).join('');
       }
     }
 
     const filterSel = document.getElementById('furnaceFilter');
-    if (filterSel && furnaces.length) {
+    if (filterSel) {
       const prevFilter = filterSel.value;
-      filterSel.innerHTML = `<option value="">Все печи (${furnaces.length} агр.)</option>` +
+      filterSel.innerHTML = `<option value="">Все печи (${furnaces.length})</option>` +
         furnaces.map(f => `<option value="${f.furnace_no}">${f.name || ('ДСП-135 №' + f.furnace_no)}</option>`).join('');
       filterSel.value = prevFilter;
     }
@@ -814,8 +807,12 @@ function suggestNextFurnaceDefaults(plc) {
   while (nums.includes(nextNo)) nextNo++;
   const noInput = document.getElementById('newFurnaceNo');
   const nameInput = document.getElementById('newFurnaceName');
+  const hostInput = document.getElementById('newFurnaceHost');
   if (noInput) noInput.value = nextNo;
   if (nameInput) nameInput.value = `ДСП-135 №${nextNo}`;
+  if (hostInput && (!hostInput.value || /^192\.168\.10\.\d+$/.test(hostInput.value.trim()))) {
+    hostInput.value = `192.168.10.${10 + nextNo}`;
+  }
 }
 
 function openAddFurnacePanel(plc) {
@@ -849,8 +846,12 @@ async function initPlcView() {
   document.getElementById('newFurnaceNo')?.addEventListener('input', e => {
     const n = Number(e.target.value) || 1;
     const nameInput = document.getElementById('newFurnaceName');
+    const hostInput = document.getElementById('newFurnaceHost');
     if (nameInput && (!nameInput.value || /^ДСП-135 №\d+$/i.test(nameInput.value.trim()))) {
       nameInput.value = `ДСП-135 №${n}`;
+    }
+    if (hostInput && (!hostInput.value || /^192\.168\.10\.\d+$/.test(hostInput.value.trim()))) {
+      hostInput.value = `192.168.10.${10 + n}`;
     }
   });
 
@@ -860,10 +861,10 @@ async function initPlcView() {
     const furnace_no = Number(document.getElementById('newFurnaceNo')?.value) || undefined;
     const name = document.getElementById('newFurnaceName')?.value.trim();
     const steel_grade = document.getElementById('newFurnaceGrade')?.value || 'Ст3сп';
-    const controller = document.getElementById('newFurnaceController')?.value.trim() || 'Siemens SIMATIC S7-1518F';
+    const controller = document.getElementById('newFurnaceController')?.value.trim() || 'Siemens SIMATIC S7-1518F-4 PN/DP';
     const protocol = document.getElementById('newFurnaceProtocol')?.value || 'OPC UA';
-    const host = document.getElementById('newFurnaceHost')?.value.trim() || '127.0.0.1';
-    const port = Number(document.getElementById('newFurnacePort')?.value) || 4580;
+    const host = document.getElementById('newFurnaceHost')?.value.trim() || '192.168.10.11';
+    const port = Number(document.getElementById('newFurnacePort')?.value) || 4840;
     const autoConnect = Boolean(document.getElementById('newFurnaceAutoConnect')?.checked);
 
     if (btn) {
@@ -957,8 +958,14 @@ function renderPlcUnitsCards(plc) {
   if (!grid || !plc || !Array.isArray(plc.furnaces)) return;
   plcUnitsRenderedOnce = true;
 
+  if (!plc.furnaces.length) {
+    grid.innerHTML = '';
+    grid.style.display = 'none';
+    return;
+  }
+
+  grid.style.display = 'grid';
   const protocols = ['OPC UA', 'Modbus TCP', 'MQTT / HTTP', 'Siemens S7comm'];
-  const canDelete = plc.furnaces.length > 1;
 
   const cardsHtml = plc.furnaces.map(f => {
     const fNo = f.furnace_no;
@@ -974,7 +981,7 @@ function renderPlcUnitsCards(plc) {
             <span class="fleet-src-badge ${pres.badgeClass}" id="plcUnitState-${fNo}">
               ${pres.badgeLabel}
             </span>
-            ${canDelete ? `<button class="plc-del-btn" data-del-furnace="${fNo}" title="Удалить узел печи №${fNo}">✕</button>` : ''}
+            <button class="plc-del-btn" data-del-furnace="${fNo}" title="Удалить узел печи №${fNo}">✕</button>
           </div>
         </div>
         <div class="plc-unit-sub">${f.controller} · Марка: <b>${f.steel_grade || 'Ст3сп'}</b></div>
@@ -1020,21 +1027,7 @@ function renderPlcUnitsCards(plc) {
     `;
   }).join('');
 
-  const addUnitCardHtml = `
-    <div class="plc-unit-card plc-add-unit-card" id="plcCardAddBtn">
-      <div class="plc-add-unit-inner">
-        <div class="plc-add-unit-plus">+</div>
-        <div class="plc-add-unit-title">ДОБАВИТЬ ПЕЧЬ (ПЛК)</div>
-        <div class="plc-add-unit-desc">Регистрация нового агрегата ДСП / ДСП-135 в системе мониторинга цеха (всего в списке: ${plc.furnaces.length})</div>
-      </div>
-    </div>
-  `;
-
-  grid.innerHTML = cardsHtml + addUnitCardHtml;
-
-  document.getElementById('plcCardAddBtn')?.addEventListener('click', () => {
-    openAddFurnacePanel(plc);
-  });
+  grid.innerHTML = cardsHtml;
 
   grid.querySelectorAll('.plc-del-btn').forEach(btn => {
     btn.addEventListener('click', async e => {
@@ -1043,7 +1036,7 @@ function renderPlcUnitsCards(plc) {
       const res = await call('plc:remove', { furnace_no: fNo });
       if (res && res.ok) {
         await refreshPlcStatusOnly(true);
-        await tickLive(false);
+        await tickLive();
       }
     });
   });

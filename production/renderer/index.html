@@ -58,7 +58,7 @@
             <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd"/>
           </svg>
           <span class="nav-title">Подключение ПЛК</span>
-          <span class="nav-chip" id="navPlcBadge">0/4</span>
+          <span class="nav-chip" id="navPlcBadge">0</span>
         </button>
 
         <button class="nav-btn" data-view="help">
@@ -72,7 +72,7 @@
       <div class="sidebar-footer">
         <div class="db-status">
           <span class="status-dot ok" id="connDot"></span>
-          <span id="connState">ШЛЮЗ АСУ ТП: 4580</span>
+          <span id="connState">ПЕЧЕЙ: 0 · ШЛЮЗ :4580</span>
         </div>
         <div class="sys-info">ОАО «БМЗ» · ЭСПЦ-2 (ПРОД.)</div>
       </div>
@@ -107,19 +107,16 @@
            1. Вкладка: Мониторинг плавки
            ==================================================================== -->
       <section id="view-dashboard" class="view active">
-        <!-- Заглушка, когда ни одна печь ещё не подключена в Центре ПЛК -->
+        <!-- Заглушка, когда ни одна печь ещё не добавлена/не подключена в Центре ПЛК -->
         <div class="panel dash-empty-state" id="dashboardEmptyState">
           <div class="dash-empty-box">
-            <span class="status-tag">ОЖИДАНИЕ ПОДКЛЮЧЕНИЯ АГРЕГАТОВ</span>
+            <span class="status-tag">ОЖИДАНИЕ РЕГИСТРАЦИИ И ПОДКЛЮЧЕНИЯ ПЕЧЕЙ</span>
             <h2 class="dash-empty-title">НЕТ ПОДКЛЮЧЁННЫХ ПЕЧЕЙ ДСП-135</h2>
             <p class="dash-empty-desc">
-              Карточки агрегатов, телеметрия плавки и 3D-цифровой двойник появляются на экране мониторинга только после непосредственного подключения соответствующей печи с проверкой канала связи в разделе <b>«Подключение ПЛК»</b>.
+              По умолчанию в промышленной версии не зарегистрировано ни одной печи. Перейдите в раздел <b>«Подключение ПЛК»</b> и нажмите <b>«+ ДОБАВИТЬ ПЕЧЬ (ПЛК)»</b>, чтобы добавить агрегаты вашего цеха и подключить их к мониторингу.
             </p>
             <div class="dash-empty-slots" id="dashEmptySlots">
-              <div class="dash-slot-chip">ДСП-135 №1 · <span>ОТКЛЮЧЕНА</span></div>
-              <div class="dash-slot-chip">ДСП-135 №2 · <span>ОТКЛЮЧЕНА</span></div>
-              <div class="dash-slot-chip">ДСП-135 №3 · <span>ОТКЛЮЧЕНА</span></div>
-              <div class="dash-slot-chip">ДСП-135 №4 · <span>ОТКЛЮЧЕНА</span></div>
+              <div class="dash-slot-chip" style="grid-column: 1 / -1;">В СИСТЕМЕ ЕЩЁ НЕ ДОБАВЛЕНО НИ ОДНОЙ ПЕЧИ · <span>НАЖМИТЕ «+ ДОБАВИТЬ ПЕЧЬ (ПЛК)»</span></div>
             </div>
             <button class="btn-primary dash-empty-btn" id="btnGoPlcConnect">
               ПЕРЕЙТИ В ЦЕНТР «ПОДКЛЮЧЕНИЕ ПЛК»
@@ -311,11 +308,7 @@
                 <input type="text" id="meltsSearchInput" placeholder="Поиск по номеру или сталевару...">
               </div>
               <select id="furnaceFilter" class="select-styled">
-                <option value="">Все печи (ДСП №1–4)</option>
-                <option value="1">ДСП-135 №1</option>
-                <option value="2">ДСП-135 №2</option>
-                <option value="3">ДСП-135 №3</option>
-                <option value="4">ДСП-135 №4</option>
+                <option value="">Все печи (0)</option>
               </select>
               <select id="gradeFilter" class="select-styled">
                 <option value="">Все марки стали</option>
@@ -330,7 +323,7 @@
 
           <div class="melts-summary-chips">
             <span class="chip-item">Всего записей: <b id="totalMeltsCount">0</b></span>
-            <span class="chip-item">В работе сейчас: <b id="activeMeltsCount" style="color:var(--accent)">4</b></span>
+            <span class="chip-item">В работе сейчас: <b id="activeMeltsCount" style="color:var(--accent)">0</b></span>
             <span class="chip-item">Завершено штатно: <b id="completedMeltsCount">0</b></span>
             <span class="chip-item">Плавок с замечаниями: <b id="warnMeltsCount">0</b></span>
           </div>
@@ -396,8 +389,6 @@
       </section>
 
       <!-- ====================================================================
-           4. Вкладка: Подключение ПЛК и шлюз АСУ ТП (Уровень 1 / Уровень 2)
-      <!-- ====================================================================
            4. Вкладка: Промышленное подключение ПЛК (STRICT REAL PLC — БЕЗ ЭМУЛЯЦИИ)
            ==================================================================== -->
       <section id="view-plc" class="view">
@@ -444,10 +435,10 @@
 
           <div class="plc-add-grid">
             <label>Номер печи (узел)
-              <input type="number" id="newFurnaceNo" value="5" min="1" max="99">
+              <input type="number" id="newFurnaceNo" value="1" min="1" max="99">
             </label>
             <label>Наименование агрегата
-              <input type="text" id="newFurnaceName" value="ДСП-135 №5" placeholder="Напр.: ДСП-135 №5">
+              <input type="text" id="newFurnaceName" value="ДСП-135 №1" placeholder="Напр.: ДСП-135 №1">
             </label>
             <label>Базовая марка стали
               <select id="newFurnaceGrade" class="select-styled">
@@ -469,7 +460,7 @@
               </select>
             </label>
             <label>IP-адрес ПЛК в сети цеха
-              <input type="text" id="newFurnaceHost" value="192.168.10.15" placeholder="192.168.10.15">
+              <input type="text" id="newFurnaceHost" value="192.168.10.11" placeholder="192.168.10.11">
             </label>
             <label>TCP-порт
               <input type="number" id="newFurnacePort" value="4840" min="1" max="65535">

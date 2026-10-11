@@ -24,77 +24,8 @@ class PlcConnector {
     this.totalRxPackets = 0;
     this.packetLog = [];
 
-    // Промышленные узлы печей цеха (по умолчанию отключены до верификации TCP-соединения с реальным ПЛК)
-    this.furnaces = {
-      1: {
-        furnace_no: 1,
-        name: 'ДСП-135 №1',
-        steel_grade: 'Ст3сп',
-        controller: 'Siemens SIMATIC S7-1518F-4 PN/DP',
-        protocol: 'OPC UA',
-        host: '192.168.10.11',
-        port: 4840,
-        endpoint: 'opc.tcp://192.168.10.11:4840 (ns=3;s="DB_EAF1")',
-        poll_ms: 1000,
-        connected: false,
-        status: 'DISCONNECTED',
-        last_rx_at: null,
-        rx_count: 0,
-        last_error: null,
-        ping_ms: null
-      },
-      2: {
-        furnace_no: 2,
-        name: 'ДСП-135 №2',
-        steel_grade: '09Г2С',
-        controller: 'Schneider Electric Modicon M580',
-        protocol: 'Modbus TCP',
-        host: '192.168.10.12',
-        port: 502,
-        endpoint: 'UnitID=1 · Holding Reg 40001–40016',
-        poll_ms: 1000,
-        connected: false,
-        status: 'DISCONNECTED',
-        last_rx_at: null,
-        rx_count: 0,
-        last_error: null,
-        ping_ms: null
-      },
-      3: {
-        furnace_no: 3,
-        name: 'ДСП-135 №3',
-        steel_grade: '40Х',
-        controller: 'Siemens SIMATIC S7-1516-3 PN/DP',
-        protocol: 'OPC UA',
-        host: '192.168.10.13',
-        port: 4840,
-        endpoint: 'opc.tcp://192.168.10.13:4840 (ns=3;s="DB_EAF3")',
-        poll_ms: 1000,
-        connected: false,
-        status: 'DISCONNECTED',
-        last_rx_at: null,
-        rx_count: 0,
-        last_error: null,
-        ping_ms: null
-      },
-      4: {
-        furnace_no: 4,
-        name: 'ДСП-135 №4',
-        steel_grade: '65Г',
-        controller: 'Промышленный шлюз Уровня 2 (DMZ)',
-        protocol: 'MQTT / HTTP',
-        host: '192.168.10.14',
-        port: 4580,
-        endpoint: 'POST /api/v1/telemetry · bmz/esp2/eaf4',
-        poll_ms: 1000,
-        connected: false,
-        status: 'DISCONNECTED',
-        last_rx_at: null,
-        rx_count: 0,
-        last_error: null,
-        ping_ms: null
-      }
-    };
+    // В промышленной версии по умолчанию список печей пуст (0 печей) — агрегаты появляются только после нажатия «+ Добавить печь (ПЛК)»
+    this.furnaces = {};
   }
 
   getFurnaceNumbers() {
@@ -137,32 +68,19 @@ class PlcConnector {
           const fNo = Number(key);
           if (!Number.isInteger(fNo) || fNo < 1) continue;
           const saved = raw.furnaces[key];
-          const base = this.furnaces[fNo] || {
-            furnace_no: fNo,
-            name: `ДСП-135 №${fNo}`,
-            steel_grade: 'Ст3сп',
-            controller: 'Siemens SIMATIC S7-1518F-4 PN/DP',
-            protocol: 'OPC UA',
-            host: `192.168.10.${10 + fNo}`,
-            port: 4840,
-            endpoint: `opc.tcp://192.168.10.${10 + fNo}:4840 (ns=3;s="DB_EAF${fNo}")`,
-            poll_ms: 1000
-          };
-          const host = saved.host || base.host;
-          const port = Number(saved.port) || base.port;
-          const protocol = saved.protocol || base.protocol;
+          const host = saved.host || `192.168.10.${10 + fNo}`;
+          const port = Number(saved.port) || 4840;
+          const protocol = saved.protocol || 'OPC UA';
           loadedFurnaces[fNo] = {
-            ...base,
             furnace_no: fNo,
-            name: saved.name || base.name || `ДСП-135 №${fNo}`,
-            steel_grade: saved.steel_grade || base.steel_grade || 'Ст3сп',
-            controller: saved.controller || base.controller,
+            name: saved.name || `ДСП-135 №${fNo}`,
+            steel_grade: saved.steel_grade || 'Ст3сп',
+            controller: saved.controller || 'Siemens SIMATIC S7-1518F-4 PN/DP',
             protocol,
             host,
             port,
             endpoint: saved.endpoint || this.defaultEndpointForProtocol(protocol, fNo, host, port),
             poll_ms: Number(saved.poll_ms) || 1000,
-            // На старте промышленного АРМ каждая печь требует явного подключения и проверки физического TCP-канала
             connected: false,
             status: 'DISCONNECTED',
             last_rx_at: null,
@@ -171,12 +89,10 @@ class PlcConnector {
             ping_ms: null
           };
         }
-        if (Object.keys(loadedFurnaces).length > 0) {
-          this.furnaces = loadedFurnaces;
-        }
+        this.furnaces = loadedFurnaces;
       }
     } catch (_) {
-      // Используем штатную конфигурацию
+      // Используем пустой список при ошибке чтения
     }
   }
 
@@ -263,9 +179,7 @@ class PlcConnector {
 
   removeFurnace(furnaceNo) {
     const fNo = Number(furnaceNo);
-    const nums = this.getFurnaceNumbers();
     if (!this.furnaces[fNo]) return { ok: false, error: 'Узел печи не найден' };
-    if (nums.length <= 1) return { ok: false, error: 'В системе должна быть зарегистрирована минимум 1 печь' };
     const title = this.furnaces[fNo].name || `ДСП-135 №${fNo}`;
     delete this.furnaces[fNo];
     this.saveConfig();
