@@ -1,5 +1,5 @@
 // Логика клиентской части «Цифровая плавка — БМЗ» (АРМ оператора ДСП-135)
-// Управление 3D моделью, дашбордом реального времени, журналом плавок, расчётом шихты и справочниками
+// Управление 3D моделью, дашбордом реального времени, журналом плавок, ПЛК-шлюзом и справочником
 
 const call = (method, args) => window.api.call(method, args);
 
@@ -19,7 +19,6 @@ function stageName(t, duration = 65) {
 let furnace3D = null;
 let liveChart = null;
 let detailChart = null;
-let shPieChart = null;
 
 let cachedMelts = [];
 let cachedAlerts = [];
@@ -104,10 +103,8 @@ function switchView(viewName) {
     dashboard: ['Мониторинг плавки', 'Контроль агрегатов ДСП-135 №1–4'],
     melts: ['Журнал плавок', 'Технологические паспорта выплавки стали'],
     alerts: ['Журнал событий', 'Регистрация технологических отклонений и сигнализации'],
-    shihta: ['Расчёт шихты', 'Дозировка сырья, баланс углерода и кислорода'],
-    materials: ['Справочники', 'Состав шихтовых материалов и требования марок стали'],
     plc: ['Подключение ПЛК', 'Конфигурация каналов связи АСУ ТП (OPC UA / Modbus TCP / HTTP)'],
-    help: ['Документация', 'Технологический регламент ДСП-135 и глоссарий']
+    help: ['Справочник', 'Руководство пользователя, регламент ДСП-135 и марочник сталей']
   };
 
   if (titles[viewName]) {
@@ -637,200 +634,21 @@ function renderAlertsTable() {
 }
 
 // ==========================================================================
-// 6. Расчёт металлошихты (Shihta)
+// 6. Марочник сталей в разделе «Справочник»
 // ==========================================================================
-async function initShihta() {
+async function loadGradesReference() {
   const grades = await call('grades:list');
-  const sel = document.getElementById('shGrade');
-  sel.innerHTML = grades.map(g => `<option value="${g.name}">${g.name}</option>`).join('');
-
-  sel.addEventListener('change', () => {
-    fillTargets(grades);
-    calcShihta();
-  });
-  fillTargets(grades);
-
-  document.getElementById('shCalcBtn').addEventListener('click', calcShihta);
-  await calcShihta();
-}
-
-function fillTargets(grades) {
-  const g = grades.find(x => x.name === document.getElementById('shGrade').value);
-  if (!g) return;
-
-  document.getElementById('shC').value = ((g.c_min + g.c_max) / 2).toFixed(2);
-  document.getElementById('shSi').value = ((g.si_min + g.si_max) / 2).toFixed(2);
-  document.getElementById('shMn').value = ((g.mn_min + g.mn_max) / 2).toFixed(2);
-
-  document.getElementById('hintC').textContent = `ГОСТ: ${g.c_min}–${g.c_max} %`;
-  document.getElementById('hintSi').textContent = `ГОСТ: ${g.si_min}–${g.si_max} %`;
-  document.getElementById('hintMn').textContent = `ГОСТ: ${g.mn_min}–${g.mn_max} %`;
-}
-
-async function calcShihta() {
-  const r = await call('shihta:calc', {
-    grade: document.getElementById('shGrade').value,
-    mass: document.getElementById('shMass').value,
-    targetC: document.getElementById('shC').value,
-    targetSi: document.getElementById('shSi').value,
-    targetMn: document.getElementById('shMn').value
-  });
-
-  const panel = document.getElementById('shResult');
-  panel.style.visibility = 'visible';
-
-  document.getElementById('shTotalCost').textContent = `${fmtNum(r.totalCost)} BYN`;
-  document.getElementById('shCostPerTon').textContent = `${fmtNum(r.costPerTon)} BYN`;
-  document.getElementById('shO2Kg').textContent = `${fmtNum(r.o2Kg)} кг`;
-
-  document.querySelector('#shTable tbody').innerHTML = r.rows.map(row => `
-    <tr>
-      <td><b>${row.name}</b></td>
-      <td>${row.kg !== undefined ? row.kg + ' кг' : row.mass + ' т'}</td>
-      <td>${fmtNum(row.price)}</td>
-      <td><b>${fmtNum(Math.round(row.mass * row.price))}</b></td>
-    </tr>`).join('');
-
-  renderShihtaChart(r.rows);
-  renderChemGauges(r);
-  generateShihtaExplanation(r);
-}
-
-function renderShihtaChart(rows) {
-  const ctx = document.getElementById('shPieChart').getContext('2d');
-  const labels = rows.map(r => r.name);
-  const data = rows.map(r => r.mass);
-
-  const colors = [
-    '#5e7a94', // Металлолом
-    '#c87a28', // Чугун
-    '#747b84', // Известь
-    '#4d8a63', // ФС45
-    '#9a6b4c', // ФМн78
-    '#8c7a52'  // Кокс
-  ];
-
-  if (shPieChart) shPieChart.destroy();
-
-  shPieChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: colors.slice(0, rows.length),
-        borderWidth: 1,
-        borderColor: '#212327'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: '#94989e', boxWidth: 10, font: { size: 10, weight: '600' } }
-        }
-      },
-      cutout: '60%'
-    }
-  });
-}
-
-function renderChemGauges(r) {
-  const container = document.getElementById('shChemGauges');
-  const { chemistry, spec, verdict } = r;
-
-  const renderGauge = (title, val, min, max, isOk) => {
-    const padMin = min * 0.7;
-    const padMax = max * 1.3;
-    const totalSpan = padMax - padMin;
-
-    const zoneLeft = ((min - padMin) / totalSpan) * 100;
-    const zoneWidth = ((max - min) / totalSpan) * 100;
-    const needleLeft = Math.min(98, Math.max(2, ((val - padMin) / totalSpan) * 100));
-
-    return `
-      <div class="chem-gauge-card">
-        <div class="chem-gauge-head">
-          <span class="chem-el-title">${title}</span>
-          <span class="chem-el-val">${val} %</span>
-          <span class="chem-verdict ${isOk ? 'ok' : 'bad'}">
-            ${isOk ? 'НОРМА (ГОСТ)' : 'ОТКЛОНЕНИЕ'}
-          </span>
-        </div>
-        <div class="chem-meter-track">
-          <div class="chem-meter-zone" style="left: ${zoneLeft}%; width: ${zoneWidth}%;"></div>
-          <div class="chem-meter-needle" style="left: ${needleLeft}%;"></div>
-        </div>
-        <div class="chem-meter-footer">
-          <span>Мин: ${min} %</span>
-          <span>Допуск ГОСТ</span>
-          <span>Макс: ${max} %</span>
-        </div>
-      </div>`;
-  };
-
-  container.innerHTML =
-    renderGauge('Углерод [C]', chemistry.c, spec.c_min, spec.c_max, verdict.c) +
-    renderGauge('Кремний [Si]', chemistry.si, spec.si_min, spec.si_max, verdict.si) +
-    renderGauge('Марганец [Mn]', chemistry.mn, spec.mn_min, spec.mn_max, verdict.mn);
-}
-
-function generateShihtaExplanation(r) {
-  const textEl = document.getElementById('shExpText');
-  let exp = `Для выплавки стали марки ${r.grade} объёмом ${r.massT} т рассчитана шихтовка. `;
-
-  if (r.o2Kg > 0) {
-    exp += `За счёт ввода передельного чугуна обеспечен базовый углерод. Избыток углерода окисляется продувкой кислородом (расход: ${fmtNum(r.o2Kg)} кг O₂ по реакции C + O₂ → CO₂). `;
-  }
-
-  exp += `Для раскисления и доведения кремния и марганца введены ферросплавы с учётом нормативного угара (Si — 50%, Mn — 30%). Известь обеспечивает основность шлака для защиты футеровки печи.`;
-
-  textEl.innerHTML = exp;
-}
-
-// ==========================================================================
-// 7. Справочники (Materials & Grades)
-// ==========================================================================
-async function loadMaterials() {
-  const mats = await call('materials:list');
-  const grades = await call('grades:list');
-
-  const roleStyles = {
-    'основа': 'tag-grade',
-    'легирующее': 'badge-accent',
-    'флюс': 'status-tag ok',
-    'добавка': 'warn-count-badge'
-  };
-
-  const renderMats = items => {
-    document.querySelector('#materialsTable tbody').innerHTML = items.map(m => `
-      <tr>
-        <td><b>${m.name}</b></td>
-        <td><span class="${roleStyles[m.role] || 'status-tag'}">${m.role.toUpperCase()}</span></td>
-        <td>${m.c_pct !== null ? m.c_pct + ' %' : '—'}</td>
-        <td>${m.si_pct !== null ? m.si_pct + ' %' : '—'}</td>
-        <td>${m.mn_pct !== null ? m.mn_pct + ' %' : '—'}</td>
-        <td><b>${fmtNum(m.price_per_t)} BYN</b></td>
-      </tr>`).join('');
-  };
-
-  renderMats(mats);
-
-  document.getElementById('materialsSearch')?.addEventListener('input', e => {
-    const q = e.target.value.toLowerCase().trim();
-    renderMats(mats.filter(m => m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q)));
-  });
+  const tbody = document.querySelector('#gradesTable tbody');
+  if (!tbody || !Array.isArray(grades)) return;
 
   const gradeApps = {
-    'Ст3сп': 'Рядовой строительный прокат, уголки, швеллеры, арматурный прокат',
-    '09Г2С': 'Низколегированная мостовая и трубная сталь для эксплуатации при t до -70 °C',
-    '40Х': 'Машиностроение: валы, оси, зубчатые венцы повышенной прочности',
-    '65Г': 'Рессорно-пружинная сталь с высокой упругостью и стойкостью к истиранию'
+    'Ст3сп': 'ДСП-135 №1 · Рядовой строительный прокат, уголки, швеллеры, арматурный прокат',
+    '09Г2С': 'ДСП-135 №2 · Низколегированная мостовая и трубная сталь для эксплуатации при t до -70 °C',
+    '40Х':   'ДСП-135 №3 · Машиностроение: валы, оси, зубчатые венцы повышенной прочности',
+    '65Г':   'ДСП-135 №4 · Рессорно-пружинная сталь с высокой упругостью и стойкостью к истиранию'
   };
 
-  document.querySelector('#gradesTable tbody').innerHTML = grades.map(g => `
+  tbody.innerHTML = grades.map(g => `
     <tr>
       <td><b><span class="tag-grade">${g.name}</span></b></td>
       <td>${g.c_min}–${g.c_max} %</td>
@@ -1176,8 +994,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   loadMelts();
   loadAlerts();
-  initShihta();
-  loadMaterials();
+  loadGradesReference();
   setupGlossarySearch();
 });
 
