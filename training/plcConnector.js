@@ -1,5 +1,4 @@
-// Коннектор тренажёрной версии (УЧЕБНЫЙ ТРЕНАЖЁР ДСП-135)
-// По умолчанию включена эмуляция процессов на всех 4 печах (connected: true, mode: 'simulation')
+// Коннектор ПЛК и встроенный эмулятор для тренажёрной версии
 const http = require('http');
 const net = require('net');
 const fs = require('fs');
@@ -20,14 +19,12 @@ class PlcConnector {
     this.httpServer = null;
     this.virtualPlcTimer = null;
 
-    // В обучающей версии по умолчанию включена эмуляция процессов ('simulation')
     this.mode = 'simulation';
     this.gatewayPort = DEFAULT_GATEWAY_PORT;
     this.gatewayRunning = false;
     this.totalRxPackets = 0;
     this.packetLog = [];
 
-    // Все 4 учебные печи по умолчанию подключены к экрану мониторинга
     this.furnaces = {
       1: {
         furnace_no: 1,

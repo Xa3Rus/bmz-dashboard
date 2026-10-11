@@ -1,5 +1,4 @@
-// Промышленный коннектор АСУ ТП ЭСПЦ-2 (PRODUCTION EDITION — STRICT REAL PLC ONLY)
-// Полное отсутствие эмуляции: работа исключительно с реальными контроллерами ПЛК и промышленным HTTP/OPC/Modbus-шлюзом
+// Модуль подключения к ПЛК и приёма телеметрии по HTTP (:4580)
 const http = require('http');
 const net = require('net');
 const fs = require('fs');
@@ -24,7 +23,6 @@ class PlcConnector {
     this.totalRxPackets = 0;
     this.packetLog = [];
 
-    // В промышленной версии по умолчанию список печей пуст (0 печей) — агрегаты появляются только после нажатия «+ Добавить печь (ПЛК)»
     this.furnaces = {};
   }
 

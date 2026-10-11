@@ -1,5 +1,4 @@
-// Промышленный слой данных (PRODUCTION EDITION — БЕЗ ЭМУЛЯЦИИ И БЕЗ ГЕНЕРАТОРА СЛУЧАЙНЫХ ДАННЫХ)
-// Хранение и обработка исключительно реальной телеметрии от промышленных ПЛК печей ДСП-135
+// Работа с базой данных SQLite и обработка телеметрии от ПЛК
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
@@ -285,7 +284,6 @@ function api(method, args = {}) {
       return q('SELECT * FROM grades ORDER BY id');
     }
     case 'live:tick': {
-      // В промышленной версии генерация симуляции полностью отсутствует
       return [];
     }
     case 'plc:status': {

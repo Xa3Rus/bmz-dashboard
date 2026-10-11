@@ -24,9 +24,7 @@ let cachedMelts = [];
 let cachedAlerts = [];
 let currentAlertFilter = 'all';
 
-// ==========================================================================
-// 1. Инициализация 3D модели
-// ==========================================================================
+// Инициализация 3D-модели
 function initFurnace() {
   const container = document.getElementById('furnace3dContainer');
   if (!container) return;
@@ -75,9 +73,7 @@ function setup3DControls() {
   });
 }
 
-// ==========================================================================
-// 2. Навигация по вкладкам
-// ==========================================================================
+// Навигация по вкладкам
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const viewName = btn.dataset.view;
@@ -131,9 +127,7 @@ setInterval(() => {
   document.getElementById('clock').textContent = now.toLocaleTimeString('ru-RU');
 }, 1000);
 
-// ==========================================================================
 // 3. Дашборд реального времени (Monitoring)
-// ==========================================================================
 let selectedFurnaceNo = 1;
 let previewStageOverride = null;
 let previewTimeout = null;
@@ -458,9 +452,7 @@ function updateStageStepper(t_min, duration_min, currentStage, progressPct) {
   });
 }
 
-// ==========================================================================
 // 4. Журнал плавок (Melts)
-// ==========================================================================
 let meltsListenersBound = false;
 
 async function loadMelts() {
@@ -669,9 +661,7 @@ async function showMeltDetail(id) {
     : '<div class="mini-alert info" style="margin-top:12px">Плавка выполнена в строгом соответствии с технологической картой</div>';
 }
 
-// ==========================================================================
 // 5. Аварийные события (Alerts)
-// ==========================================================================
 let alertsListenersBound = false;
 
 async function loadAlerts() {
@@ -717,9 +707,7 @@ function renderAlertsTable() {
     </tr>`).join('');
 }
 
-// ==========================================================================
 // 6. Марочник сталей в разделе «Справочник»
-// ==========================================================================
 async function loadGradesReference() {
   const grades = await call('grades:list');
   const tbody = document.querySelector('#gradesTable tbody');
@@ -742,9 +730,7 @@ async function loadGradesReference() {
     </tr>`).join('');
 }
 
-// ==========================================================================
 // 8. Шлюз АСУ ТП и подключение реальных ПЛК (OPC UA / Modbus TCP / MQTT / HTTP)
-// ==========================================================================
 let plcUnitsRenderedOnce = false;
 let lastFurnaceListSig = '__init__';
 
@@ -1179,9 +1165,7 @@ function updatePlcRuntimeWidgets(plc) {
   }
 }
 
-// ==========================================================================
 // 9. Поиск по словарю
-// ==========================================================================
 function setupGlossarySearch() {
   const searchInput = document.getElementById('glossarySearch');
   if (!searchInput) return;
@@ -1200,9 +1184,7 @@ function setupGlossarySearch() {
   });
 }
 
-// ==========================================================================
 // 10. Старт приложения
-// ==========================================================================
 window.addEventListener('DOMContentLoaded', () => {
   const now = new Date();
   const clockEl = document.getElementById('clock');
