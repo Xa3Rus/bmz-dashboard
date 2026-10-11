@@ -345,19 +345,18 @@ asyncio.run(poll_s7_1500())
 
 ---
 
-## 6. Интеграция 3D-модели печи из Blender / CAD (`.glb`)
+## 6. 3D-модель печи ДСП-135 (`.glb`)
 
-В приложение уже включена готовая бинарная 3D-модель печи ДСП-135 и цехового окружения в формате **glTF 2.0 Binary**:
+3D-модель печи ДСП-135 и цехового окружения хранится в стандартном бинарном формате **glTF 2.0 Binary**:
 
 ```text
-renderer/models/dsp135.glb          # Готовая 3D-модель печи ДСП-135 (1.12 МБ), загружаемая приложением через GLTFLoader
-blender/dsp135_blender_project.py   # Скрипт Blender (bpy) для импорта, редактирования в Blender и обратного экспорта в .glb
+renderer/models/dsp135.glb   # 3D-модель печи ДСП-135 (1.12 МБ), загружаемая через GLTFLoader
 ```
 
 При запуске `Furnace3D` (`renderer/furnace3d.js`) напрямую загружает файл `renderer/models/dsp135.glb` через `GLTFLoader`, привязывает все технологические узлы, восстанавливает инженерные CAD-рёбра и PBR-материалы и анимирует печь в реальном времени от телеметрии ПЛК.
 
 ### Как открыть и отредактировать модель в Blender:
-1. Откройте **Blender** (версии 3.x / 4.x) и импортируйте `renderer/models/dsp135.glb` через `File -> Import -> glTF 2.0 (.glb/.gltf)` **или** откройте скрипт `blender/dsp135_blender_project.py` во вкладке `Scripting` и нажмите **Run Script**.
+1. Откройте **Blender** (версии 3.x / 4.x) и импортируйте `renderer/models/dsp135.glb` через `File -> Import -> glTF 2.0 (.glb/.gltf)`.
 2. При обратном экспорте из Blender в `renderer/models/dsp135.glb` включите галочку **`Include -> Custom Properties (Extras)`** (`export_extras=True`), чтобы сохранить привязку материалов (`matKey`) и CAD-контуров (`hasCadEdges`).
 
 ### Именование узлов в `renderer/models/dsp135.glb` для автоматической анимации телеметрией:
