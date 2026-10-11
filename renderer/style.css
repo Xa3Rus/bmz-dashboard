@@ -1809,3 +1809,152 @@ body {
   color: var(--cyan-light);
 }
 
+/* ==========================================================================
+   Состояние ожидания подключения печей и кнопки подключения в Центре ПЛК
+   ========================================================================== */
+.dash-active-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dash-empty-state {
+  flex: 1;
+  min-height: 520px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+}
+
+.dash-empty-box {
+  max-width: 580px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.dash-empty-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: var(--text);
+}
+
+.dash-empty-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.dash-empty-slots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+  margin: 6px 0;
+}
+
+.dash-slot-chip {
+  background: var(--panel-2);
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-xs);
+  padding: 9px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.dash-slot-chip span {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.4px;
+}
+
+.dash-empty-btn {
+  margin-top: 4px;
+  padding: 11px 22px;
+}
+
+.fleet-add-card {
+  border-style: dashed !important;
+  border-color: var(--border-light) !important;
+  background: rgba(255, 255, 255, 0.015) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 68px;
+}
+
+.fleet-add-card:hover {
+  border-color: var(--accent) !important;
+  background: rgba(200, 122, 40, 0.06) !important;
+}
+
+.fleet-add-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--accent-light);
+}
+
+.fleet-add-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.fleet-src-badge.offline {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.plc-unit-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.plc-connect-btn {
+  padding: 7px 10px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+
+.plc-connect-btn.connect {
+  background: var(--accent);
+  border: 1px solid var(--accent-light);
+  color: #fff;
+}
+
+.plc-connect-btn.connect:hover {
+  background: var(--accent-light);
+}
+
+.plc-connect-btn.disconnect {
+  background: rgba(194, 74, 74, 0.14);
+  border: 1px solid var(--crit);
+  color: #e68a8a;
+}
+
+.plc-connect-btn.disconnect:hover {
+  background: rgba(194, 74, 74, 0.25);
+  color: #fff;
+}
+
+

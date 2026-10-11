@@ -22,10 +22,13 @@ class PlcConnector {
     this.packetLog = []; // Последние 60 кадров обмена
 
     // Конфигурация 4 промышленных контроллеров печей ДСП-135 №1..4
+    // По умолчанию при запуске ни одна печь не подключена к мониторингу до ручного подключения в Центре ПЛК
     this.furnaces = {
       1: {
         furnace_no: 1,
         enabled: true,
+        connected: false,
+        connected_at: null,
         protocol: 'OPC UA',
         controller: 'Siemens SIMATIC S7-1518F',
         host: '127.0.0.1',
@@ -33,7 +36,7 @@ class PlcConnector {
         endpoint: 'ns=3;s="DB_EAF1_Telemetry"',
         poll_ms: 1000,
         read_only: true,
-        status: 'STANDBY',
+        status: 'OFFLINE',
         ping_ms: null,
         rx_count: 0,
         last_rx_at: null,
@@ -42,6 +45,8 @@ class PlcConnector {
       2: {
         furnace_no: 2,
         enabled: true,
+        connected: false,
+        connected_at: null,
         protocol: 'Modbus TCP',
         controller: 'Schneider Modicon M580',
         host: '127.0.0.1',
@@ -49,7 +54,7 @@ class PlcConnector {
         endpoint: 'UnitID=2 · Holding Reg 40001–40024',
         poll_ms: 1000,
         read_only: true,
-        status: 'STANDBY',
+        status: 'OFFLINE',
         ping_ms: null,
         rx_count: 0,
         last_rx_at: null,
@@ -58,6 +63,8 @@ class PlcConnector {
       3: {
         furnace_no: 3,
         enabled: true,
+        connected: false,
+        connected_at: null,
         protocol: 'OPC UA',
         controller: 'Siemens SIMATIC S7-1516',
         host: '127.0.0.1',
@@ -65,7 +72,7 @@ class PlcConnector {
         endpoint: 'ns=3;s="DB_EAF3_Telemetry"',
         poll_ms: 1000,
         read_only: true,
-        status: 'STANDBY',
+        status: 'OFFLINE',
         ping_ms: null,
         rx_count: 0,
         last_rx_at: null,
@@ -74,6 +81,8 @@ class PlcConnector {
       4: {
         furnace_no: 4,
         enabled: true,
+        connected: false,
+        connected_at: null,
         protocol: 'MQTT / HTTP',
         controller: 'Шлюз АСУ ТП Уровня 2 (БМЗ ЭСПЦ-2)',
         host: '127.0.0.1',
@@ -81,7 +90,7 @@ class PlcConnector {
         endpoint: 'bmz/espc2/dsp4/telemetry',
         poll_ms: 1000,
         read_only: true,
-        status: 'STANDBY',
+        status: 'OFFLINE',
         ping_ms: null,
         rx_count: 0,
         last_rx_at: null,
@@ -110,8 +119,13 @@ class PlcConnector {
               ...this.furnaces[k],
               ...raw.furnaces[k],
               furnace_no: k,
-              rx_count: this.furnaces[k].rx_count || 0,
-              last_rx_at: this.furnaces[k].last_rx_at || null
+              // На старте сессии печи всегда отключены до явного подключения оператором
+              connected: false,
+              connected_at: null,
+              status: 'OFFLINE',
+              ping_ms: null,
+              rx_count: 0,
+              last_rx_at: null
             };
           }
         }
@@ -232,6 +246,16 @@ class PlcConnector {
     }
 
     const fCfg = this.furnaces[fNo];
+    if (!fCfg.connected) {
+      this.appendLog(
+        packet.source || fCfg.protocol,
+        fNo,
+        'WARN',
+        `Пакет для ДСП №${fNo} отклонён: агрегат не подключён в Центре подключения ПЛК`
+      );
+      return { ok: false, furnace_no: fNo, error: `ДСП-135 №${fNo} не подключена к мониторингу` };
+    }
+
     const nowIso = new Date().toISOString();
 
     const normalized = {
@@ -268,7 +292,7 @@ class PlcConnector {
     if (this.onTelemetryCallback) {
       dbUpdate = this.onTelemetryCallback(normalized);
     }
-    return { furnace_no: fNo, rx_count: fCfg.rx_count, received_at: nowIso, dbUpdate };
+    return { ok: true, furnace_no: fNo, rx_count: fCfg.rx_count, received_at: nowIso, dbUpdate };
   }
 
   // Проверка реальной TCP-доступности контроллера / шлюза печи
@@ -288,7 +312,9 @@ class PlcConnector {
         socket.destroy();
         const elapsed = Date.now() - start;
         fCfg.ping_ms = ok ? elapsed : null;
-        fCfg.status = ok ? 'ONLINE' : 'OFFLINE';
+        if (fCfg.connected) {
+          fCfg.status = ok ? 'ONLINE' : 'STANDBY';
+        }
         this.appendLog(
           fCfg.protocol,
           fNo,
@@ -315,7 +341,56 @@ class PlcConnector {
     });
   }
 
-  // Встроенный эмулятор внешнего ПЛК-передатчика (отправляет реальные HTTP-пакеты в локальный шлюз)
+  // Ручное подключение / отключение печи с обязательной проверкой канала связи
+  async setFurnaceConnection(furnaceNo, shouldConnect = true) {
+    const fNo = Number(furnaceNo) || 1;
+    const fCfg = this.furnaces[fNo];
+    if (!fCfg) return { ok: false, error: 'Неизвестный номер печи' };
+
+    if (!shouldConnect) {
+      fCfg.connected = false;
+      fCfg.connected_at = null;
+      fCfg.status = 'OFFLINE';
+      fCfg.ping_ms = null;
+      this.appendLog('CFG', fNo, 'WARN', `ДСП-135 №${fNo} (${fCfg.controller}) отключена от поста мониторинга АРМ`);
+      return { ok: true, connected: false, furnace_no: fNo, status: this.getStatus() };
+    }
+
+    const testRes = await this.testConnection(fNo);
+    if (!testRes.ok && this.mode === 'external') {
+      fCfg.connected = false;
+      fCfg.status = 'OFFLINE';
+      return {
+        ok: false,
+        connected: false,
+        furnace_no: fNo,
+        error: testRes.message,
+        status: this.getStatus()
+      };
+    }
+
+    fCfg.connected = true;
+    fCfg.connected_at = new Date().toISOString();
+    fCfg.status = testRes.ok ? 'ONLINE' : 'STANDBY';
+    this.appendLog(
+      fCfg.protocol,
+      fNo,
+      'OK',
+      testRes.ok
+        ? `ДСП-135 №${fNo} (${fCfg.controller}) подключена к посту мониторинга [${testRes.ping_ms} мс]`
+        : `ДСП-135 №${fNo} подключена к мониторингу (резервный контур модели — узел ${fCfg.host}:${fCfg.port} недоступен)`
+    );
+
+    return {
+      ok: true,
+      connected: true,
+      furnace_no: fNo,
+      ping_ms: testRes.ping_ms,
+      status: this.getStatus()
+    };
+  }
+
+  // Встроенный эмулятор внешнего ПЛК-передатчика (отправляет реальные HTTP-пакеты только для подключённых печей)
   toggleVirtualPlcStream(enable, getActiveMeltsFn) {
     if (this.virtualPlcTimer) {
       clearInterval(this.virtualPlcTimer);
@@ -328,13 +403,13 @@ class PlcConnector {
       return { active: false };
     }
 
-    this.appendLog('PLC-SIM', 0, 'INFO', `Запущена потоковая передача пакетов от 4 виртуальных ПЛК в шлюз 127.0.0.1:${this.gatewayPort}`);
+    this.appendLog('PLC-SIM', 0, 'INFO', `Запущена потоковая передача пакетов для подключённых печей в шлюз 127.0.0.1:${this.gatewayPort}`);
 
     const sendCycle = () => {
       const actives = typeof getActiveMeltsFn === 'function' ? getActiveMeltsFn() : [];
       for (let fNo = 1; fNo <= 4; fNo++) {
         const fCfg = this.furnaces[fNo];
-        if (!fCfg.enabled) continue;
+        if (!fCfg.enabled || !fCfg.connected) continue;
 
         const m = actives.find(a => a.furnace_no === fNo) || { t_min: 15, temp_c: 1540, power_mw: 42.5, duration_min: 65 };
         const nextT = ((Number(m.t_min) || 0) + 0.55) % (m.duration_min || 65);
@@ -417,7 +492,7 @@ class PlcConnector {
 
   isFurnaceLiveExternal(furnaceNo) {
     const f = this.furnaces[Number(furnaceNo)];
-    if (!f || !f.last_rx_at) return false;
+    if (!f || !f.connected || !f.last_rx_at) return false;
     const ageMs = Date.now() - new Date(f.last_rx_at).getTime();
     return ageMs <= 12000; // Считаем активным потоком ПЛК, если пакет был не старше 12 сек
   }
@@ -426,12 +501,16 @@ class PlcConnector {
     const now = Date.now();
     const units = [1, 2, 3, 4].map(k => {
       const f = this.furnaces[k];
-      const isFresh = f.last_rx_at && (now - new Date(f.last_rx_at).getTime() <= 12000);
-      let effectiveSource = 'MODEL';
-      if (this.mode === 'external') {
-        effectiveSource = isFresh ? 'PLC_LIVE' : 'WAITING_PLC';
-      } else if (this.mode === 'hybrid') {
-        effectiveSource = isFresh ? 'PLC_LIVE' : 'MODEL';
+      const isFresh = f.connected && f.last_rx_at && (now - new Date(f.last_rx_at).getTime() <= 12000);
+      let effectiveSource = 'DISCONNECTED';
+      if (f.connected) {
+        if (this.mode === 'external') {
+          effectiveSource = isFresh ? 'PLC_LIVE' : 'WAITING_PLC';
+        } else if (this.mode === 'hybrid') {
+          effectiveSource = isFresh ? 'PLC_LIVE' : 'MODEL';
+        } else {
+          effectiveSource = 'MODEL';
+        }
       }
       return {
         ...f,
@@ -447,6 +526,7 @@ class PlcConnector {
       gatewayRunning: this.gatewayRunning,
       virtualPlcActive: this.virtualPlcActive,
       totalRxPackets: this.totalRxPackets,
+      connectedCount: units.filter(u => u.connected).length,
       furnaces: units,
       packetLog: this.packetLog.slice(0, 35)
     };

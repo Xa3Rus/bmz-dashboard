@@ -89,6 +89,10 @@ document.getElementById('btnGoAlerts')?.addEventListener('click', () => {
   switchView('alerts');
 });
 
+document.getElementById('btnGoPlcConnect')?.addEventListener('click', () => {
+  switchView('plc');
+});
+
 function switchView(viewName) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -100,10 +104,10 @@ function switchView(viewName) {
   if (viewTarget) viewTarget.classList.add('active');
 
   const titles = {
-    dashboard: ['Мониторинг плавки', 'Контроль агрегатов ДСП-135 №1–4'],
+    dashboard: ['Мониторинг плавки', 'Контроль подключённых агрегатов ДСП-135'],
     melts: ['Журнал плавок', 'Технологические паспорта выплавки стали'],
     alerts: ['Журнал событий', 'Регистрация технологических отклонений и сигнализации'],
-    plc: ['Подключение ПЛК', 'Конфигурация каналов связи АСУ ТП (OPC UA / Modbus TCP / HTTP)'],
+    plc: ['Подключение ПЛК', 'Конфигурация каналов связи АСУ ТП и подключение печей к мониторингу'],
     help: ['Справочник', 'Руководство пользователя, регламент ДСП-135 и марочник сталей']
   };
 
@@ -135,6 +139,26 @@ let previewStageOverride = null;
 let previewTimeout = null;
 let lastActiveIdsSignature = '';
 
+function setDashboardConnectedLayout(hasConnectedFurnaces) {
+  const emptyEl = document.getElementById('dashboardEmptyState');
+  const activeEl = document.getElementById('dashboardActiveContent');
+  if (!emptyEl || !activeEl) return;
+
+  if (!hasConnectedFurnaces) {
+    emptyEl.style.display = 'flex';
+    activeEl.style.display = 'none';
+  } else {
+    const wasHidden = activeEl.style.display === 'none';
+    emptyEl.style.display = 'none';
+    activeEl.style.display = 'flex';
+    if (wasHidden) {
+      setTimeout(() => {
+        if (furnace3D) furnace3D.resize();
+      }, 60);
+    }
+  }
+}
+
 async function loadDashboard() {
   const s = await call('summary', { furnace_no: selectedFurnaceNo });
   if (!s) return;
@@ -144,14 +168,21 @@ async function loadDashboard() {
   document.getElementById('kpiEnergy').textContent = fmtNum(s.avgEnergyPerT);
   document.getElementById('kpiDuration').textContent = s.avgDuration;
 
-  if (s.actives) {
-    renderFurnaceFleet(s.actives);
-  }
-  if (s.active) {
-    updateMeltTitles(s.active);
-  }
   if (s.plc) {
     syncGlobalPlcBadges(s.plc);
+  }
+
+  const actives = s.actives || [];
+  setDashboardConnectedLayout(actives.length > 0);
+
+  if (actives.length > 0) {
+    if (!actives.some(a => a.furnace_no === selectedFurnaceNo)) {
+      selectedFurnaceNo = actives[0].furnace_no;
+    }
+    renderFurnaceFleet(actives);
+    if (s.active) {
+      updateMeltTitles(s.active);
+    }
   }
   await tickLive(false);
 }
@@ -160,14 +191,14 @@ function renderFurnaceFleet(actives) {
   const bar = document.getElementById('furnaceFleetBar');
   if (!bar || !Array.isArray(actives)) return;
 
-  bar.innerHTML = actives.map(m => {
+  const cardsHtml = actives.map(m => {
     const fNo = m.furnace_no || 1;
     const isSel = fNo === selectedFurnaceNo;
     const pct = Math.min(100, Math.max(0, ((m.t_min || 0) / (m.duration_min || 65)) * 100));
     const stName = m.stage || stageName(m.t_min || 0, m.duration_min || 65);
     const plcBadge = m.plc_source === 'PLC_LIVE'
       ? `<span class="fleet-src-badge plc-live">ПЛК</span>`
-      : '';
+      : `<span class="fleet-src-badge model">ПОДКЛ.</span>`;
 
     return `
       <div class="fleet-card ${isSel ? 'active' : ''}" data-furnace="${fNo}">
@@ -192,7 +223,18 @@ function renderFurnaceFleet(actives) {
     `;
   }).join('');
 
-  bar.querySelectorAll('.fleet-card').forEach(card => {
+  const addMoreCard = actives.length < 4
+    ? `
+      <div class="fleet-card fleet-add-card" id="fleetAddFurnaceBtn" title="Подключить ещё печь в Центре ПЛК">
+        <div class="fleet-add-title">+ ПОДКЛЮЧИТЬ ПЕЧЬ</div>
+        <div class="fleet-add-sub">Активно агрегатов: ${actives.length} из 4</div>
+      </div>
+    `
+    : '';
+
+  bar.innerHTML = cardsHtml + addMoreCard;
+
+  bar.querySelectorAll('.fleet-card[data-furnace]').forEach(card => {
     card.addEventListener('click', () => {
       const fNo = Number(card.dataset.furnace);
       if (fNo && fNo !== selectedFurnaceNo) {
@@ -202,6 +244,10 @@ function renderFurnaceFleet(actives) {
         tickLive(false);
       }
     });
+  });
+
+  document.getElementById('fleetAddFurnaceBtn')?.addEventListener('click', () => {
+    switchView('plc');
   });
 }
 
@@ -263,11 +309,8 @@ async function tickLive(advanceSimulation = true) {
     await call('live:tick');
   }
   const sum = await call('summary', { furnace_no: selectedFurnaceNo });
-  if (!sum || !sum.active) return;
+  if (!sum) return;
 
-  if (sum.actives) {
-    renderFurnaceFleet(sum.actives);
-  }
   if (sum.plc) {
     syncGlobalPlcBadges(sum.plc);
   }
@@ -277,14 +320,27 @@ async function tickLive(advanceSimulation = true) {
   document.getElementById('kpiEnergy').textContent = fmtNum(sum.avgEnergyPerT);
   document.getElementById('kpiDuration').textContent = sum.avgDuration;
 
-  const sig = (sum.actives || []).map(a => a.id).join(',');
+  const actives = sum.actives || [];
+  setDashboardConnectedLayout(actives.length > 0);
+  if (!actives.length || !sum.active) {
+    return;
+  }
+
+  if (!actives.some(a => a.furnace_no === selectedFurnaceNo)) {
+    selectedFurnaceNo = actives[0].furnace_no;
+  }
+
+  renderFurnaceFleet(actives);
+
+  const sig = actives.map(a => a.id).join(',');
   if (lastActiveIdsSignature && lastActiveIdsSignature !== sig) {
     loadMelts();
     loadAlerts();
   }
   lastActiveIdsSignature = sig;
 
-  const detail = await call('melt:detail', { id: sum.active.id });
+  const targetActive = actives.find(a => a.furnace_no === selectedFurnaceNo) || sum.active;
+  const detail = await call('melt:detail', { id: targetActive.id });
   if (!detail) return;
 
   const { melt, points } = detail;
@@ -667,15 +723,16 @@ function syncGlobalPlcBadges(plc) {
   if (!plc) return;
   const navBadge = document.getElementById('navPlcBadge');
   if (navBadge) {
-    const modeNames = { simulation: 'МОДЕЛЬ', hybrid: 'ГИБРИД', external: 'ПЛК LIVE' };
-    navBadge.textContent = modeNames[plc.mode] || 'ГИБРИД';
-    navBadge.classList.toggle('live-chip', plc.mode === 'external' || plc.virtualPlcActive || plc.totalRxPackets > 0);
+    const connCount = plc.connectedCount ?? (plc.furnaces || []).filter(u => u.connected).length;
+    navBadge.textContent = `${connCount}/4`;
+    navBadge.classList.toggle('live-chip', connCount > 0);
   }
 
   const connState = document.getElementById('connState');
   if (connState) {
+    const connCount = plc.connectedCount ?? (plc.furnaces || []).filter(u => u.connected).length;
     connState.textContent = plc.gatewayRunning
-      ? `ШЛЮЗ АСУ ТП: :${plc.gatewayPort} (${plc.totalRxPackets} ПАК.)`
+      ? `ПЕЧЕЙ: ${connCount}/4 · ШЛЮЗ :${plc.gatewayPort}`
       : 'БД: SQLite CONNECTED';
   }
 
@@ -717,7 +774,7 @@ async function initPlcView() {
     }
   });
 
-  // Запуск / остановка потокового эмулятора 4 внешних ПЛК по HTTP
+  // Запуск / остановка потокового эмулятора внешних ПЛК по HTTP
   document.getElementById('btnTogglePlcStream')?.addEventListener('click', async () => {
     const cur = await call('plc:status');
     await call('plc:stream', { enable: !cur.virtualPlcActive });
@@ -767,11 +824,18 @@ async function initPlcView() {
       alert: alertMsg ? { level: 'warn', message: alertMsg } : undefined
     };
 
-    await call('plc:inject', packet);
-    selectedFurnaceNo = fNo;
+    const res = await call('plc:inject', packet);
+    const sendBtn = document.getElementById('btnSendPlcPacket');
+    if (res && res.ok === false && sendBtn) {
+      const prev = sendBtn.textContent;
+      sendBtn.textContent = `ОШИБКА: ПЕЧЬ №${fNo} НЕ ПОДКЛЮЧЕНА`;
+      setTimeout(() => { sendBtn.textContent = prev; }, 2200);
+    } else {
+      selectedFurnaceNo = fNo;
+    }
     await refreshPlcStatusOnly(false);
     await tickLive(false);
-    if (alertMsg) {
+    if (alertMsg && (!res || res.ok !== false)) {
       loadAlerts();
       document.getElementById('injAlert').value = '';
     }
@@ -805,6 +869,35 @@ async function refreshPlcStatusOnly(rebuildCards = false) {
   updatePlcRuntimeWidgets(plc);
 }
 
+function getFurnaceStatePresentation(f) {
+  if (!f.connected) {
+    return {
+      cardClass: 'offline',
+      badgeClass: 'offline',
+      badgeLabel: 'ОТКЛЮЧЕНА'
+    };
+  }
+  if (f.effective_source === 'PLC_LIVE') {
+    return {
+      cardClass: 'online',
+      badgeClass: 'plc-live',
+      badgeLabel: 'ПОДКЛЮЧЕНА · ПЛК'
+    };
+  }
+  if (f.effective_source === 'WAITING_PLC') {
+    return {
+      cardClass: 'standby',
+      badgeClass: 'waiting',
+      badgeLabel: 'ПОДКЛЮЧЕНА · ОЖИДАНИЕ'
+    };
+  }
+  return {
+    cardClass: 'online',
+    badgeClass: 'model',
+    badgeLabel: 'ПОДКЛЮЧЕНА · МОДЕЛЬ'
+  };
+}
+
 function renderPlcUnitsCards(plc) {
   const grid = document.getElementById('plcUnitsGrid');
   if (!grid || !plc || !Array.isArray(plc.furnaces)) return;
@@ -814,17 +907,15 @@ function renderPlcUnitsCards(plc) {
 
   grid.innerHTML = plc.furnaces.map(f => {
     const fNo = f.furnace_no;
-    const stateClass = f.effective_source === 'PLC_LIVE' ? 'online' : (f.status === 'OFFLINE' ? 'offline' : 'standby');
-    const stateLabel = f.effective_source === 'PLC_LIVE'
-      ? 'ПЛК ОНЛАЙН'
-      : (f.effective_source === 'WAITING_PLC' ? 'ОЖИДАНИЕ ПЛК' : 'РЕЗЕРВ МОДЕЛИ');
+    const pres = getFurnaceStatePresentation(f);
+    const isConn = Boolean(f.connected);
 
     return `
-      <div class="plc-unit-card ${stateClass}" id="plcCard-${fNo}" data-furnace="${fNo}">
+      <div class="plc-unit-card ${pres.cardClass}" id="plcCard-${fNo}" data-furnace="${fNo}">
         <div class="plc-unit-head">
           <span class="plc-unit-title">ДСП-135 №${fNo}</span>
-          <span class="fleet-src-badge ${f.effective_source === 'PLC_LIVE' ? 'plc-live' : (f.effective_source === 'WAITING_PLC' ? 'waiting' : 'model')}" id="plcUnitState-${fNo}">
-            ${stateLabel}
+          <span class="fleet-src-badge ${pres.badgeClass}" id="plcUnitState-${fNo}">
+            ${pres.badgeLabel}
           </span>
         </div>
         <div class="plc-unit-sub">${f.controller}</div>
@@ -853,23 +944,65 @@ function renderPlcUnitsCards(plc) {
           <span>Задержка: <b id="plcUnitPing-${fNo}">${f.ping_ms !== null ? f.ping_ms + ' мс' : '—'}</b></span>
         </div>
 
-        <button class="plc-test-btn" data-test-furnace="${fNo}">ПРОВЕРИТЬ TCP-КАНАЛ ПЛК №${fNo}</button>
+        <div class="plc-unit-actions">
+          <button
+            class="plc-connect-btn ${isConn ? 'disconnect' : 'connect'}"
+            id="plcConnBtn-${fNo}"
+            data-connect-furnace="${fNo}"
+            data-connected="${isConn ? 'true' : 'false'}"
+          >
+            ${isConn ? `ОТКЛЮЧИТЬ ПЕЧЬ №${fNo}` : `ПОДКЛЮЧИТЬ ПЕЧЬ №${fNo}`}
+          </button>
+          <button class="plc-test-btn" data-test-furnace="${fNo}" title="Проверить доступность узла по TCP">
+            ТЕСТ КАНАЛА
+          </button>
+        </div>
       </div>
     `;
   }).join('');
 
+  grid.querySelectorAll('.plc-connect-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fNo = Number(btn.dataset.connectFurnace);
+      const currentlyConnected = btn.dataset.connected === 'true';
+
+      const furnaces = collectPlcCardsConfig();
+      await call('plc:config', { furnaces });
+
+      if (!currentlyConnected) {
+        btn.disabled = true;
+        btn.textContent = 'ПРОВЕРКА КАНАЛА...';
+        const res = await call('plc:connect', { furnace_no: fNo, connect: true });
+        btn.disabled = false;
+        if (!res.ok) {
+          btn.textContent = 'ОШИБКА КАНАЛА ПЛК';
+          await refreshPlcStatusOnly(false);
+          setTimeout(() => {
+            btn.textContent = `ПОДКЛЮЧИТЬ ПЕЧЬ №${fNo}`;
+          }, 2200);
+          return;
+        }
+        selectedFurnaceNo = fNo;
+      } else {
+        await call('plc:connect', { furnace_no: fNo, connect: false });
+      }
+
+      await refreshPlcStatusOnly(false);
+      await tickLive(false);
+    });
+  });
+
   grid.querySelectorAll('.plc-test-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const fNo = Number(btn.dataset.testFurnace);
-      // Сначала сохраняем введённый пользователем IP/порт
       const furnaces = collectPlcCardsConfig();
       await call('plc:config', { furnaces });
-      btn.textContent = 'ДИАГНОСТИКА TCP...';
+      btn.textContent = 'ТЕСТ TCP...';
       const res = await call('plc:test', { furnace_no: fNo });
-      btn.textContent = res.ok ? `СВЯЗЬ OK (${res.ping_ms} МС)` : 'УЗЕЛ НЕДОСТУПЕН';
+      btn.textContent = res.ok ? `OK (${res.ping_ms} МС)` : 'НЕТ ОТВЕТА';
       await refreshPlcStatusOnly(false);
       setTimeout(() => {
-        btn.textContent = `ПРОВЕРИТЬ TCP-КАНАЛ ПЛК №${fNo}`;
+        btn.textContent = 'ТЕСТ КАНАЛА';
       }, 2200);
     });
   });
@@ -911,11 +1044,11 @@ function updatePlcRuntimeWidgets(plc) {
   if (streamBtn) {
     streamBtn.classList.toggle('stream-on', Boolean(plc.virtualPlcActive));
     streamBtn.textContent = plc.virtualPlcActive
-      ? 'ЭМУЛЯТОР 4 ПЛК: АКТИВЕН (ОСТАНОВИТЬ)'
-      : 'ЗАПУСТИТЬ ЭМУЛЯТОР 4 ПЛК (HTTP ПОТОК)';
+      ? 'ЭМУЛЯТОР ПЛК: АКТИВЕН (ОСТАНОВИТЬ)'
+      : 'ЗАПУСТИТЬ ЭМУЛЯТОР ПЛК (HTTP ПОТОК)';
   }
 
-  // Обновляем метаданные карточек контроллеров без перерисовки инпутов
+  // Обновляем метаданные и кнопки подключения карточек контроллеров без перерисовки инпутов
   (plc.furnaces || []).forEach(f => {
     const fNo = f.furnace_no;
     const rxNode = document.getElementById(`plcUnitRx-${fNo}`);
@@ -923,17 +1056,24 @@ function updatePlcRuntimeWidgets(plc) {
     const pingNode = document.getElementById(`plcUnitPing-${fNo}`);
     if (pingNode) pingNode.textContent = f.ping_ms !== null ? `${f.ping_ms} мс` : '—';
 
+    const pres = getFurnaceStatePresentation(f);
     const stNode = document.getElementById(`plcUnitState-${fNo}`);
     if (stNode) {
-      stNode.className = `fleet-src-badge ${f.effective_source === 'PLC_LIVE' ? 'plc-live' : (f.effective_source === 'WAITING_PLC' ? 'waiting' : 'model')}`;
-      stNode.textContent = f.effective_source === 'PLC_LIVE'
-        ? 'ПЛК ОНЛАЙН'
-        : (f.effective_source === 'WAITING_PLC' ? 'ОЖИДАНИЕ ПЛК' : 'РЕЗЕРВ МОДЕЛИ');
+      stNode.className = `fleet-src-badge ${pres.badgeClass}`;
+      stNode.textContent = pres.badgeLabel;
     }
 
     const cardNode = document.getElementById(`plcCard-${fNo}`);
     if (cardNode) {
-      cardNode.className = `plc-unit-card ${f.effective_source === 'PLC_LIVE' ? 'online' : (f.status === 'OFFLINE' ? 'offline' : 'standby')}`;
+      cardNode.className = `plc-unit-card ${pres.cardClass}`;
+    }
+
+    const connBtn = document.getElementById(`plcConnBtn-${fNo}`);
+    if (connBtn && !connBtn.disabled) {
+      const isConn = Boolean(f.connected);
+      connBtn.dataset.connected = isConn ? 'true' : 'false';
+      connBtn.className = `plc-connect-btn ${isConn ? 'disconnect' : 'connect'}`;
+      connBtn.textContent = isConn ? `ОТКЛЮЧИТЬ ПЕЧЬ №${fNo}` : `ПОДКЛЮЧИТЬ ПЕЧЬ №${fNo}`;
     }
   });
 

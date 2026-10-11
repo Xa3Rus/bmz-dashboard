@@ -244,10 +244,15 @@ function seed() {
 
 // ---------- Симуляция и приём телеметрии ПЛК для 4 параллельных печей ----------
 
-function activeMelts() {
+function activeMelts(includeDisconnected = false) {
   const list = [];
   const plcStat = plcConnector.getStatus();
   for (let fNo = 1; fNo <= 4; fNo++) {
+    const unitCfg = plcStat.furnaces.find(u => u.furnace_no === fNo) || {};
+    if (!includeDisconnected && !unitCfg.connected) {
+      continue;
+    }
+
     let m = q("SELECT * FROM melts WHERE status='active' AND furnace_no=? ORDER BY id DESC LIMIT 1", [fNo])[0];
     if (!m) {
       const grade = GRADES[(fNo - 1) % GRADES.length].name;
@@ -260,7 +265,6 @@ function activeMelts() {
       power_mw: 0
     };
     const st = stageAt(lastPt.t_min);
-    const unitCfg = plcStat.furnaces.find(u => u.furnace_no === fNo) || {};
     list.push({
       ...m,
       t_min: lastPt.t_min,
@@ -275,9 +279,9 @@ function activeMelts() {
   return list;
 }
 
-function activeMelt(furnaceNo = 1) {
-  const all = activeMelts();
-  return all.find(m => m.furnace_no === Number(furnaceNo)) || all[0];
+function activeMelt(furnaceNo = 1, includeDisconnected = false) {
+  const all = activeMelts(includeDisconnected);
+  return all.find(m => m.furnace_no === Number(furnaceNo)) || all[0] || null;
 }
 
 function activeProgress(meltId) {
@@ -292,7 +296,7 @@ function pickDistinctGrade(excludeGrades) {
 
 function startNextActiveMelt(melt, overrideGrade = null) {
   run("UPDATE melts SET status='completed' WHERE id=?", [melt.id]);
-  const otherActiveGrades = activeMelts()
+  const otherActiveGrades = activeMelts(true)
     .filter(x => x.furnace_no !== melt.furnace_no)
     .map(x => x.steel_grade);
   const nextGrade = overrideGrade || pickDistinctGrade(otherActiveGrades);
@@ -313,7 +317,7 @@ function startNextActiveMelt(melt, overrideGrade = null) {
 function applyExternalTelemetry(packet) {
   if (!db) return null;
   const fNo = Number(packet.furnace_no) || 1;
-  let melt = activeMelt(fNo);
+  let melt = activeMelt(fNo, false);
   if (!melt) return null;
 
   if (packet.steel_grade && packet.steel_grade !== melt.steel_grade) {
@@ -372,7 +376,9 @@ function tickLive() {
     return [];
   }
 
-  const currentActives = activeMelts();
+  const currentActives = activeMelts(false);
+  if (!currentActives.length) return [];
+
   const results = [];
 
   for (const melt of currentActives) {
@@ -413,9 +419,9 @@ function tickLive() {
 function api(method, args = {}) {
   switch (method) {
     case 'summary': {
-      const actives = activeMelts();
+      const actives = activeMelts(false);
       const selectedFurnace = args.furnace_no ? Number(args.furnace_no) : 1;
-      const active = actives.find(a => a.furnace_no === selectedFurnace) || actives[0];
+      const active = actives.find(a => a.furnace_no === selectedFurnace) || actives[0] || null;
       const today = q("SELECT COUNT(*) AS n FROM melts WHERE date(started_at)=date('now')")[0].n;
       const avgEnergy = Math.round(q('SELECT AVG(energy_kwh/mass_t) AS v FROM melts WHERE status="completed"')[0].v);
       const avgDur = Math.round(q('SELECT AVG(duration_min) AS v FROM melts WHERE status="completed"')[0].v);
@@ -438,17 +444,11 @@ function api(method, args = {}) {
                 FROM alerts a LEFT JOIN melts m ON m.id=a.melt_id
                 ORDER BY a.created_at DESC LIMIT 100`);
     }
-    case 'materials:list': {
-      return q('SELECT * FROM materials ORDER BY id');
-    }
     case 'grades:list': {
       return q('SELECT * FROM grades ORDER BY id');
     }
     case 'live:tick': {
       return tickLive();
-    }
-    case 'shihta:calc': {
-      return calcShihta(args);
     }
     case 'plc:status': {
       return plcConnector.getStatus();
@@ -459,97 +459,18 @@ function api(method, args = {}) {
     case 'plc:test': {
       return plcConnector.testConnection(args.furnace_no);
     }
+    case 'plc:connect': {
+      return plcConnector.setFurnaceConnection(args.furnace_no, args.connect !== false);
+    }
     case 'plc:inject': {
       return plcConnector.ingestTelemetryPacket(args, 'ARM-OPERATOR');
     }
     case 'plc:stream': {
-      return plcConnector.toggleVirtualPlcStream(args.enable, () => activeMelts());
+      return plcConnector.toggleVirtualPlcStream(args.enable, () => activeMelts(false));
     }
     default:
       throw new Error('Unknown API method: ' + method);
   }
-}
-
-
-// ---------- Расчёт шихты ----------
-
-function calcShihta({ grade, mass, targetC, targetSi, targetMn }) {
-  const mats = q('SELECT * FROM materials');
-  const byName = n => mats.find(m => m.name.startsWith(n));
-  const scrap = byName('Металлолом');
-  const pig = byName('Чугун');
-  const fesi = byName('Ферросилиций');
-  const femn = byName('Ферромарганец');
-  const lime = byName('Известь');
-  const coke = byName('Кокс');
-
-  const T = Number(mass) || 100;           // т
-  const C = Number(targetC);               // %
-  const Si = Number(targetSi);             // %
-  const Mn = Number(targetMn);             // %
-
-  // Доля чугуна: типовая для ДСП 25–35 %, подбирается под целевой углерод
-  let x = (C - scrap.c_pct) / (pig.c_pct - scrap.c_pct);
-  x = Math.min(0.35, Math.max(0.20, x));
-
-  const fluxMass = Math.round(T * 0.05 * 10) / 10;   // известь 5 % от массы
-  const metalMass = T - fluxMass;
-  const pigMass = Math.round(metalMass * x * 10) / 10;
-  const scrapMass = Math.round((metalMass - pigMass) * 10) / 10;
-
-  // Базовое содержание элементов в металлошихте, кг (масса_т * % * 10)
-  const baseC  = (scrapMass * scrap.c_pct  + pigMass * pig.c_pct)  * 10;
-  const baseSi = (scrapMass * scrap.si_pct + pigMass * pig.si_pct) * 10;
-  const baseMn = (scrapMass * scrap.mn_pct + pigMass * pig.mn_pct) * 10;
-
-  // Легирование до целевого состава (учёт угара Si и Mn при продувке)
-  const retSi = baseSi * 0.50;
-  const retMn = baseMn * 0.70;
-  const needSi = Math.max(0, Si * T * 10 - retSi);               // кг
-  const needMn = Math.max(0, Mn * T * 10 - retMn);
-  const fesiKg = Math.round(needSi / (fesi.si_pct / 100) * 10) / 10;
-  const femnKg = Math.round(needMn / (femn.mn_pct / 100) * 10) / 10;
-
-  // Баланс углерода: база + углерод ферросплавов против целевого,
-  // избыток выжигается кислородом, недостаток компенсируется коксом
-  const alloyC = fesiKg * fesi.c_pct / 100 + femnKg * femn.c_pct / 100;
-  const targetC_kg = C * T * 10;
-  const oxiC = Math.max(0, baseC + alloyC - targetC_kg);         // кг C на окисление
-  const o2Kg = Math.round(oxiC * 2.67);                          // O2 + C -> CO2 (32/12)
-  const needC  = Math.max(0, targetC_kg - (baseC + alloyC));     // кг (науглероживание)
-  const cokeKg = Math.round(needC / (coke.c_pct / 100) * 10) / 10;
-
-  const rows = [
-    { name: scrap.name, mass: scrapMass, price: scrap.price_per_t },
-    { name: pig.name,   mass: pigMass,   price: pig.price_per_t },
-    { name: lime.name,  mass: fluxMass,  price: lime.price_per_t }
-  ];
-  if (fesiKg > 0) rows.push({ name: fesi.name,  mass: Math.round(fesiKg / 1000 * 1000) / 1000, kg: fesiKg, price: fesi.price_per_t });
-  if (femnKg > 0) rows.push({ name: femn.name,  mass: Math.round(femnKg / 1000 * 1000) / 1000, kg: femnKg, price: femn.price_per_t });
-  if (cokeKg > 0) rows.push({ name: coke.name,  mass: Math.round(cokeKg / 1000 * 1000) / 1000, kg: cokeKg, price: coke.price_per_t });
-
-  const total = rows.reduce((s, r) => s + r.mass * r.price, 0);
-  const finC  = (baseC - oxiC + cokeKg * coke.c_pct / 100 + fesiKg * fesi.c_pct / 100 + femnKg * femn.c_pct / 100) / (T * 1000) * 100;
-  const finSi = (retSi + fesiKg * fesi.si_pct / 100) / (T * 1000) * 100;
-  const finMn = (retMn + femnKg * femn.mn_pct / 100) / (T * 1000) * 100;
-
-  const g = q('SELECT * FROM grades WHERE name=?', [grade])[0];
-  const verdict = g ? {
-    c:  finC  >= g.c_min  && finC  <= g.c_max,
-    si: finSi >= g.si_min && finSi <= g.si_max,
-    mn: finMn >= g.mn_min && finMn <= g.mn_max
-  } : null;
-
-  return {
-    grade, massT: T,
-    rows,
-    totalCost: Math.round(total),
-    costPerTon: Math.round(total / T),
-    o2Kg,
-    chemistry: { c: Math.round(finC * 1000) / 1000, si: Math.round(finSi * 1000) / 1000, mn: Math.round(finMn * 1000) / 1000 },
-    spec: g,
-    verdict
-  };
 }
 
 module.exports = { init, api };

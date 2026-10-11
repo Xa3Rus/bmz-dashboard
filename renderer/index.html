@@ -58,6 +58,7 @@
             <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd"/>
           </svg>
           <span class="nav-title">Подключение ПЛК</span>
+          <span class="nav-chip" id="navPlcBadge">0/4</span>
         </button>
 
         <button class="nav-btn" data-view="help">
@@ -106,145 +107,168 @@
            1. Вкладка: Мониторинг плавки
            ==================================================================== -->
       <section id="view-dashboard" class="view active">
-        <!-- Компактная панель переключения 4 печей цеха -->
-        <div class="furnace-fleet-bar" id="furnaceFleetBar"></div>
-
-        <!-- Компактная шкала этапов выбранной печи -->
-        <div class="stage-stepper-panel panel">
-          <div class="stepper-header">
-            <div class="stepper-title">
-              <span class="stepper-label" id="stepperFurnaceTitle">ДСП-135 №1</span>
-              <span class="stepper-melt-tag" id="stepperMeltNum">ПЛ-0000-000</span>
+        <!-- Заглушка, когда ни одна печь ещё не подключена в Центре ПЛК -->
+        <div class="panel dash-empty-state" id="dashboardEmptyState">
+          <div class="dash-empty-box">
+            <span class="status-tag">ОЖИДАНИЕ ПОДКЛЮЧЕНИЯ АГРЕГАТОВ</span>
+            <h2 class="dash-empty-title">НЕТ ПОДКЛЮЧЁННЫХ ПЕЧЕЙ ДСП-135</h2>
+            <p class="dash-empty-desc">
+              Карточки агрегатов, телеметрия плавки и 3D-цифровой двойник появляются на экране мониторинга только после непосредственного подключения соответствующей печи с проверкой канала связи в разделе <b>«Подключение ПЛК»</b>.
+            </p>
+            <div class="dash-empty-slots">
+              <div class="dash-slot-chip">ДСП-135 №1 · <span>ОТКЛЮЧЕНА</span></div>
+              <div class="dash-slot-chip">ДСП-135 №2 · <span>ОТКЛЮЧЕНА</span></div>
+              <div class="dash-slot-chip">ДСП-135 №3 · <span>ОТКЛЮЧЕНА</span></div>
+              <div class="dash-slot-chip">ДСП-135 №4 · <span>ОТКЛЮЧЕНА</span></div>
             </div>
-            <div class="stepper-time">
-              <span id="stepperTime">0.0 / 65 мин</span>
-              <span class="stepper-percent" id="stepperPercent">0%</span>
-            </div>
-          </div>
-
-          <div class="cycle-master-bar" style="display:none"><div class="cycle-master-fill" id="stepperFill"></div></div>
-
-          <div class="stepper-track">
-            <div class="step-node" data-stage="Завалка" id="step-0" title="Предпросмотр стадии в 3D">
-              <div class="step-name-row">
-                <span class="step-name">1. Завалка</span>
-                <span class="step-state" id="stepState-0">Ожидание</span>
-              </div>
-              <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-0"></div></div>
-            </div>
-
-            <div class="step-node" data-stage="Плавление" id="step-1" title="Предпросмотр стадии в 3D">
-              <div class="step-name-row">
-                <span class="step-name">2. Плавление</span>
-                <span class="step-state" id="stepState-1">Ожидание</span>
-              </div>
-              <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-1"></div></div>
-            </div>
-
-            <div class="step-node" data-stage="Доводка" id="step-2" title="Предпросмотр стадии в 3D">
-              <div class="step-name-row">
-                <span class="step-name">3. Доводка</span>
-                <span class="step-state" id="stepState-2">Ожидание</span>
-              </div>
-              <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-2"></div></div>
-            </div>
-
-            <div class="step-node" data-stage="Выпуск" id="step-3" title="Предпросмотр стадии в 3D">
-              <div class="step-name-row">
-                <span class="step-name">4. Выпуск</span>
-                <span class="step-state" id="stepState-3">Ожидание</span>
-              </div>
-              <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-3"></div></div>
-            </div>
+            <button class="btn-primary dash-empty-btn" id="btnGoPlcConnect">
+              ПЕРЕЙТИ В ЦЕНТР «ПОДКЛЮЧЕНИЕ ПЛК»
+            </button>
           </div>
         </div>
 
-        <!-- Рабочая область: Чистое 3D-окно агрегата и Панель параметров -->
-        <div class="dash-grid">
-          <!-- Левая панель: 3D модель печи без графиков и лишних плашек -->
-          <div class="panel main-vis-panel">
-            <div class="panel-head vis-toolbar-head">
-              <div class="panel-title-row">
-                <span class="panel-title" id="liveMeltNum">ДСП №1</span>
-                <span id="liveStage" class="stage-badge">ЗАВАЛКА</span>
-                <span class="panel-sub-inline" id="liveMeltInfo"></span>
-              </div>
+        <!-- Рабочая область мониторинга (отображается, когда подключена хотя бы 1 печь) -->
+        <div id="dashboardActiveContent" class="dash-active-wrap" style="display:none">
+          <!-- Компактная панель переключения подключённых печей цеха -->
+          <div class="furnace-fleet-bar" id="furnaceFleetBar"></div>
 
-              <div class="hud-controls">
-                <button class="hud-btn active" id="btnCutaway">Разрез</button>
-                <button class="hud-btn" id="btnShell">Корпус</button>
-                <button class="hud-btn" id="btnThermal">Термокарта</button>
-                <button class="hud-btn" id="btnWireframe">Каркас</button>
-                <button class="hud-btn" id="btnRotate">Вращение</button>
-                <button class="hud-btn" id="btnResetCam">Сброс</button>
+          <!-- Компактная шкала этапов выбранной печи -->
+          <div class="stage-stepper-panel panel">
+            <div class="stepper-header">
+              <div class="stepper-title">
+                <span class="stepper-label" id="stepperFurnaceTitle">ДСП-135 №1</span>
+                <span class="stepper-melt-tag" id="stepperMeltNum">ПЛ-0000-000</span>
+              </div>
+              <div class="stepper-time">
+                <span id="stepperTime">0.0 / 65 мин</span>
+                <span class="stepper-percent" id="stepperPercent">0%</span>
               </div>
             </div>
 
-            <div class="vis-viewport" id="visViewport">
-              <div class="furnace3d-wrap" id="furnace3dWrap">
-                <div id="furnace3dContainer" class="furnace3d-canvas"></div>
+            <div class="cycle-master-bar" style="display:none"><div class="cycle-master-fill" id="stepperFill"></div></div>
+
+            <div class="stepper-track">
+              <div class="step-node" data-stage="Завалка" id="step-0" title="Предпросмотр стадии в 3D">
+                <div class="step-name-row">
+                  <span class="step-name">1. Завалка</span>
+                  <span class="step-state" id="stepState-0">Ожидание</span>
+                </div>
+                <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-0"></div></div>
+              </div>
+
+              <div class="step-node" data-stage="Плавление" id="step-1" title="Предпросмотр стадии в 3D">
+                <div class="step-name-row">
+                  <span class="step-name">2. Плавление</span>
+                  <span class="step-state" id="stepState-1">Ожидание</span>
+                </div>
+                <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-1"></div></div>
+              </div>
+
+              <div class="step-node" data-stage="Доводка" id="step-2" title="Предпросмотр стадии в 3D">
+                <div class="step-name-row">
+                  <span class="step-name">3. Доводка</span>
+                  <span class="step-state" id="stepState-2">Ожидание</span>
+                </div>
+                <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-2"></div></div>
+              </div>
+
+              <div class="step-node" data-stage="Выпуск" id="step-3" title="Предпросмотр стадии в 3D">
+                <div class="step-name-row">
+                  <span class="step-name">4. Выпуск</span>
+                  <span class="step-state" id="stepState-3">Ожидание</span>
+                </div>
+                <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-3"></div></div>
               </div>
             </div>
           </div>
 
-          <!-- Правая колонка: Текущие параметры печи и события -->
-          <div class="side-column">
-            <div class="panel side-params-panel">
-              <div class="panel-title" style="margin-bottom: 10px;">ПАРАМЕТРЫ АГРЕГАТА</div>
-
-              <div class="gauge-cards">
-                <div class="gauge-card">
-                  <div class="gauge-header">
-                    <span class="gauge-name">Температура ванны</span>
-                    <span class="gauge-val" id="paramTemp">-- °C</span>
-                  </div>
-                  <div class="gauge-meter-track">
-                    <div class="gauge-meter-fill temp-fill" id="meterTempFill" style="width: 20%"></div>
-                    <div class="gauge-limit-marker" style="left: 92%" title="Предел: 1660 °C"></div>
-                  </div>
+          <!-- Рабочая область: Чистое 3D-окно агрегата и Панель параметров -->
+          <div class="dash-grid">
+            <!-- Левая панель: 3D модель печи без графиков и лишних плашек -->
+            <div class="panel main-vis-panel">
+              <div class="panel-head vis-toolbar-head">
+                <div class="panel-title-row">
+                  <span class="panel-title" id="liveMeltNum">ДСП №1</span>
+                  <span id="liveStage" class="stage-badge">ЗАВАЛКА</span>
+                  <span class="panel-sub-inline" id="liveMeltInfo"></span>
                 </div>
 
-                <div class="gauge-card">
-                  <div class="gauge-header">
-                    <span class="gauge-name">Активная мощность дуги</span>
-                    <span class="gauge-val" id="paramPower">-- МВт</span>
-                  </div>
-                  <div class="gauge-meter-track">
-                    <div class="gauge-meter-fill power-fill" id="meterPowerFill" style="width: 0%"></div>
-                  </div>
+                <div class="hud-controls">
+                  <button class="hud-btn active" id="btnCutaway">Разрез</button>
+                  <button class="hud-btn" id="btnShell">Корпус</button>
+                  <button class="hud-btn" id="btnThermal">Термокарта</button>
+                  <button class="hud-btn" id="btnWireframe">Каркас</button>
+                  <button class="hud-btn" id="btnRotate">Вращение</button>
+                  <button class="hud-btn" id="btnResetCam">Сброс</button>
                 </div>
               </div>
 
-              <div class="params-list">
-                <div class="param-row">
-                  <span class="p-label">Время цикла</span>
-                  <span class="p-val" id="paramTime">0.0 / 65 мин</span>
-                </div>
-                <div class="param-row">
-                  <span class="p-label">Расход энергии</span>
-                  <span class="p-val" id="paramEnergy">0 кВт·ч</span>
-                </div>
-                <div class="param-row">
-                  <span class="p-label">Масса плавки</span>
-                  <span class="p-val" id="paramMass">-- т</span>
-                </div>
-                <div class="param-row">
-                  <span class="p-label">Марка стали</span>
-                  <span class="p-val" id="paramGrade">--</span>
-                </div>
-                <div class="param-row">
-                  <span class="p-label">Сталевар</span>
-                  <span class="p-val" id="paramOperator">--</span>
+              <div class="vis-viewport" id="visViewport">
+                <div class="furnace3d-wrap" id="furnace3dWrap">
+                  <div id="furnace3dContainer" class="furnace3d-canvas"></div>
                 </div>
               </div>
+            </div>
 
-              <div class="side-alerts-block">
-                <div class="panel-head" style="margin: 14px 0 6px;">
-                  <div class="panel-title">СОБЫТИЯ ПЕЧИ</div>
-                  <button class="link-btn" id="btnGoAlerts">Журнал ➔</button>
+            <!-- Правая колонка: Текущие параметры печи и события -->
+            <div class="side-column">
+              <div class="panel side-params-panel">
+                <div class="panel-title" style="margin-bottom: 10px;">ПАРАМЕТРЫ АГРЕГАТА</div>
+
+                <div class="gauge-cards">
+                  <div class="gauge-card">
+                    <div class="gauge-header">
+                      <span class="gauge-name">Температура ванны</span>
+                      <span class="gauge-val" id="paramTemp">-- °C</span>
+                    </div>
+                    <div class="gauge-meter-track">
+                      <div class="gauge-meter-fill temp-fill" id="meterTempFill" style="width: 20%"></div>
+                      <div class="gauge-limit-marker" style="left: 92%" title="Предел: 1660 °C"></div>
+                    </div>
+                  </div>
+
+                  <div class="gauge-card">
+                    <div class="gauge-header">
+                      <span class="gauge-name">Активная мощность дуги</span>
+                      <span class="gauge-val" id="paramPower">-- МВт</span>
+                    </div>
+                    <div class="gauge-meter-track">
+                      <div class="gauge-meter-fill power-fill" id="meterPowerFill" style="width: 0%"></div>
+                    </div>
+                  </div>
                 </div>
-                <div id="liveAlerts" class="mini-alerts">
-                  <div class="mini-alert info">Режим работы штатный</div>
+
+                <div class="params-list">
+                  <div class="param-row">
+                    <span class="p-label">Время цикла</span>
+                    <span class="p-val" id="paramTime">0.0 / 65 мин</span>
+                  </div>
+                  <div class="param-row">
+                    <span class="p-label">Расход энергии</span>
+                    <span class="p-val" id="paramEnergy">0 кВт·ч</span>
+                  </div>
+                  <div class="param-row">
+                    <span class="p-label">Масса плавки</span>
+                    <span class="p-val" id="paramMass">-- т</span>
+                  </div>
+                  <div class="param-row">
+                    <span class="p-label">Марка стали</span>
+                    <span class="p-val" id="paramGrade">--</span>
+                  </div>
+                  <div class="param-row">
+                    <span class="p-label">Сталевар</span>
+                    <span class="p-val" id="paramOperator">--</span>
+                  </div>
+                </div>
+
+                <div class="side-alerts-block">
+                  <div class="panel-head" style="margin: 14px 0 6px;">
+                    <div class="panel-title">СОБЫТИЯ ПЕЧИ</div>
+                    <button class="link-btn" id="btnGoAlerts">Журнал ➔</button>
+                  </div>
+                  <div id="liveAlerts" class="mini-alerts">
+                    <div class="mini-alert info">Режим работы штатный</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -561,15 +585,15 @@
           <div class="cycle-grid">
             <div class="cycle-card">
               <div class="cycle-num">ШАГ 01</div>
-              <div class="cycle-title">МОНИТОРИНГ 4 ПАРАЛЛЕЛЬНЫХ ПЕЧЕЙ</div>
-              <div class="cycle-desc">В верхней части экрана мониторинга расположены 4 карточки постов <b>ДСП-135 №1..4</b>. Все четыре печи выплавляют разные марки стали параллельно и независимо друг от друга. Нажмите на карточку любой печи, чтобы переключить 3D-сцену, шкалу цикла и панель приборов на выбранный агрегат.</div>
-              <div class="cycle-meta">Панель выбора агрегата ДСП-135 №1–4</div>
+              <div class="cycle-title">ПОДКЛЮЧЕНИЕ ПЕЧЕЙ В ЦЕНТРЕ ПЛК</div>
+              <div class="cycle-desc">При запуске программы ни одна печь не выведена на экран мониторинга. Перейдите во вкладку <b>Подключение ПЛК</b> и нажмите кнопку <b>ПОДКЛЮЧИТЬ ПЕЧЬ №1..4</b> на нужных агрегатах. Система выполнит проверку TCP-канала связи и добавит карточку печи на главный экран.</div>
+              <div class="cycle-meta">Вкладка «Подключение ПЛК» (кнопка «Подключить печь»)</div>
             </div>
             <div class="cycle-card">
               <div class="cycle-num">ШАГ 02</div>
-              <div class="cycle-title">УПРАВЛЕНИЕ 3D-МОДЕЛЬЮ И ОСМОТР СТАДИЙ</div>
-              <div class="cycle-desc">Управляйте 3D-камерой мышью: <b>ЛКМ</b> — вращение, <b>Колёсико</b> — масштаб, <b>ПКМ</b> — панорама. Кнопки <b>Разрез / Корпус / Термокарта / Каркас / Вращение / Сброс</b> переключают режим отображения кожуха и футеровки. Нажмите на любой этап шкалы (<b>1. Завалка — 4. Выпуск</b>), чтобы включить 3D-осмотр этой стадии.</div>
-              <div class="cycle-meta">Шкала стадий и панель 3D-сцены</div>
+              <div class="cycle-title">ПЕРЕКЛЮЧЕНИЕ ПОСТОВ И 3D-ДВОЙНИК</div>
+              <div class="cycle-desc">На экране <b>Мониторинг</b> отображаются карточки только подключённых печей. Нажмите на карточку нужной печи для переключения 3D-сцены и приборов. Кнопки <b>Разрез / Корпус / Термокарта / Каркас / Вращение / Сброс</b> меняют вид, а клик по этапам <b>1. Завалка — 4. Выпуск</b> включает 3D-осмотр стадии.</div>
+              <div class="cycle-meta">Верхняя панель подключённых печей и 3D-сцена</div>
             </div>
             <div class="cycle-card">
               <div class="cycle-num">ШАГ 03</div>
@@ -579,8 +603,8 @@
             </div>
             <div class="cycle-card">
               <div class="cycle-num">ШАГ 04</div>
-              <div class="cycle-title">ПОДКЛЮЧЕНИЕ К РЕАЛЬНЫМ ПЕЧАМ (ПЛК)</div>
-              <div class="cycle-desc">Во вкладке <b>Подключение ПЛК</b> выбирается источник данных: <b>Модель</b> (автономная симуляция), <b>Гибрид</b> (приём пакетов от ПЛК с резервом модели) или <b>Только ПЛК</b>. Встроенный стенд позволяет отправить тестовый пакет или запустить поток от 4 эмуляторов ПЛК на порт <code>127.0.0.1:4580</code>.</div>
+              <div class="cycle-title">РЕЖИМЫ ТЕЛЕМЕТРИИ И ЭМУЛЯТОР ПЛК</div>
+              <div class="cycle-desc">Для подключённых печей во вкладке <b>Подключение ПЛК</b> выбирается режим: <b>Модель</b> (автономная симуляция), <b>Гибрид</b> (приём пакетов от ПЛК с резервом модели) или <b>Только ПЛК</b>. Встроенный стенд позволяет отправить тестовый кадр или запустить поток телеметрии в шлюз <code>127.0.0.1:4580</code>.</div>
               <div class="cycle-meta">Вкладка «Подключение ПЛК» (Read-Only DMZ)</div>
             </div>
           </div>
