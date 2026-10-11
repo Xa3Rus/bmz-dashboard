@@ -122,6 +122,7 @@ function switchView(viewName) {
     alerts: ['Журнал событий', 'Автоматическая регистрация сигналов предупредительной и аварийной сигнализации'],
     shihta: ['Расчёт металлошихты', 'Оптимизация дозировки сырья, баланс углерода и расчёт потребности в кислороде'],
     materials: ['Справочники', 'Технологический состав сырья, заводские цены и требования марок стали'],
+    plc: ['Подключение ПЛК и шлюз АСУ ТП', 'Интеграция с контроллерами печей (OPC UA / Modbus TCP / MQTT) и локальный HTTP REST-шлюз 4580'],
     help: ['Документация', 'Технологический регламент ДСП-135, глоссарий и архитектура системы']
   };
 
@@ -135,6 +136,8 @@ function switchView(viewName) {
       if (furnace3D) furnace3D.resize();
       if (liveChart) liveChart.resize();
     }, 60);
+  } else if (viewName === 'plc') {
+    refreshPlcStatusOnly(true);
   }
 }
 
@@ -167,6 +170,9 @@ async function loadDashboard() {
   if (s.active) {
     updateMeltTitles(s.active);
   }
+  if (s.plc) {
+    syncGlobalPlcBadges(s.plc);
+  }
   await tickLive(false);
 }
 
@@ -180,6 +186,16 @@ function renderFurnaceFleet(actives) {
     const pct = Math.min(100, Math.max(0, ((m.t_min || 0) / (m.duration_min || 65)) * 100));
     const stName = (m.stage || stageName(m.t_min || 0, m.duration_min || 65)).toUpperCase();
 
+    let srcClass = 'model';
+    let srcLabel = 'МОДЕЛЬ';
+    if (m.plc_source === 'PLC_LIVE') {
+      srcClass = 'plc-live';
+      srcLabel = `ПЛК · ${m.plc_protocol || 'LIVE'}`;
+    } else if (m.plc_source === 'WAITING_PLC') {
+      srcClass = 'waiting';
+      srcLabel = 'ОЖИД. ПЛК';
+    }
+
     return `
       <div class="fleet-card ${isSel ? 'active' : ''}" data-furnace="${fNo}" title="Переключить 3D-двойник и телеметрию на ДСП-135 №${fNo}">
         <div class="fleet-top">
@@ -187,7 +203,10 @@ function renderFurnaceFleet(actives) {
             <span class="fleet-dot"></span>
             ДСП-135 №${fNo}
           </span>
-          <span class="fleet-grade">${m.steel_grade}</span>
+          <span class="fleet-tags-right">
+            <span class="fleet-src-badge ${srcClass}">${srcLabel}</span>
+            <span class="fleet-grade">${m.steel_grade}</span>
+          </span>
         </div>
         <div class="fleet-mid">
           <span class="fleet-melt-num">${m.num}</span>
@@ -280,6 +299,9 @@ async function tickLive(advanceSimulation = true) {
   // Обновляем сводную панель всех 4 параллельных печей
   if (sum.actives) {
     renderFurnaceFleet(sum.actives);
+  }
+  if (sum.plc) {
+    syncGlobalPlcBadges(sum.plc);
   }
 
   // Обновляем KPI плашки в реальном времени
@@ -942,7 +964,306 @@ async function loadMaterials() {
 }
 
 // ==========================================================================
-// 8. Поиск по словарю
+// 8. Шлюз АСУ ТП и подключение реальных ПЛК (OPC UA / Modbus TCP / MQTT / HTTP)
+// ==========================================================================
+let plcUnitsRenderedOnce = false;
+
+function syncGlobalPlcBadges(plc) {
+  if (!plc) return;
+  const navBadge = document.getElementById('navPlcBadge');
+  if (navBadge) {
+    const modeNames = { simulation: 'МОДЕЛЬ', hybrid: 'ГИБРИД', external: 'ПЛК LIVE' };
+    navBadge.textContent = modeNames[plc.mode] || 'ГИБРИД';
+    navBadge.classList.toggle('live-chip', plc.mode === 'external' || plc.virtualPlcActive || plc.totalRxPackets > 0);
+  }
+
+  const connState = document.getElementById('connState');
+  if (connState) {
+    connState.textContent = plc.gatewayRunning
+      ? `ШЛЮЗ АСУ ТП: :${plc.gatewayPort} (${plc.totalRxPackets} ПАК.)`
+      : 'БД: SQLite CONNECTED';
+  }
+
+  // Если открыта вкладка ПЛК, обновляем счётчики и лог кадров без сброса фокуса в инпутах
+  const plcView = document.getElementById('view-plc');
+  if (plcView && plcView.classList.contains('active')) {
+    updatePlcRuntimeWidgets(plc);
+  }
+}
+
+async function initPlcView() {
+  const plc = await call('plc:status');
+  if (!plc) return;
+
+  renderPlcUnitsCards(plc);
+  updatePlcRuntimeWidgets(plc);
+
+  // Переключение режима источника телеметрии
+  document.querySelectorAll('#plcModeSelector .plc-mode-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const mode = btn.dataset.plcmode;
+      const updated = await call('plc:config', { mode });
+      updatePlcRuntimeWidgets(updated);
+      tickLive(false);
+    });
+  });
+
+  // Сохранение настроек IP / портов / узлов всех 4 печей
+  document.getElementById('btnSavePlcConfig')?.addEventListener('click', async () => {
+    const furnaces = collectPlcCardsConfig();
+    const updated = await call('plc:config', { furnaces });
+    renderPlcUnitsCards(updated);
+    updatePlcRuntimeWidgets(updated);
+    const btn = document.getElementById('btnSavePlcConfig');
+    if (btn) {
+      const prev = btn.textContent;
+      btn.textContent = 'КОНФИГУРАЦИЯ СОХРАНЕНА';
+      setTimeout(() => { btn.textContent = prev; }, 1600);
+    }
+  });
+
+  // Запуск / остановка потокового эмулятора 4 внешних ПЛК по HTTP
+  document.getElementById('btnTogglePlcStream')?.addEventListener('click', async () => {
+    const cur = await call('plc:status');
+    await call('plc:stream', { enable: !cur.virtualPlcActive });
+    setTimeout(() => refreshPlcStatusOnly(false), 350);
+  });
+
+  // Синхронизация полей стенда инжекции со стадиями
+  const stageDefaults = {
+    'Завалка':   { t: 4.5,  temp: 560,  power: 14.0 },
+    'Плавление': { t: 26.0, temp: 1545, power: 43.8 },
+    'Доводка':   { t: 46.5, temp: 1635, power: 24.5 },
+    'Выпуск':    { t: 60.5, temp: 1625, power: 0.0 }
+  };
+
+  document.getElementById('injStage')?.addEventListener('change', e => {
+    const st = e.target.value;
+    if (stageDefaults[st]) {
+      document.getElementById('injTime').value = stageDefaults[st].t;
+      document.getElementById('injTemp').value = stageDefaults[st].temp;
+      document.getElementById('injPower').value = stageDefaults[st].power;
+      updateCurlSample();
+    }
+  });
+
+  ['injFurnace', 'injStage', 'injTemp', 'injPower', 'injTime', 'injGrade', 'injAlert'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updateCurlSample);
+    document.getElementById(id)?.addEventListener('change', updateCurlSample);
+  });
+
+  // Отправка реального пакета телеметрии в выбранную печь
+  document.getElementById('btnSendPlcPacket')?.addEventListener('click', async () => {
+    const fNo = Number(document.getElementById('injFurnace').value) || 1;
+    const stage = document.getElementById('injStage').value;
+    const temp_c = Number(document.getElementById('injTemp').value);
+    const power_mw = Number(document.getElementById('injPower').value);
+    const t_min = Number(document.getElementById('injTime').value);
+    const steel_grade = document.getElementById('injGrade').value || undefined;
+    const alertMsg = document.getElementById('injAlert').value.trim();
+
+    const packet = {
+      furnace_no: fNo,
+      stage,
+      temp_c,
+      power_mw,
+      t_min,
+      steel_grade,
+      alert: alertMsg ? { level: 'warn', message: alertMsg } : undefined
+    };
+
+    await call('plc:inject', packet);
+    selectedFurnaceNo = fNo;
+    await refreshPlcStatusOnly(false);
+    await tickLive(false);
+    if (alertMsg) {
+      loadAlerts();
+      document.getElementById('injAlert').value = '';
+    }
+  });
+
+  updateCurlSample();
+}
+
+function updateCurlSample() {
+  const pre = document.getElementById('plcCurlSample');
+  if (!pre) return;
+  const payload = {
+    furnace_no: Number(document.getElementById('injFurnace')?.value || 1),
+    temp_c: Number(document.getElementById('injTemp')?.value || 1615),
+    power_mw: Number(document.getElementById('injPower')?.value || 43.8),
+    t_min: Number(document.getElementById('injTime')?.value || 28.5),
+    stage: document.getElementById('injStage')?.value || 'Плавление'
+  };
+  const grade = document.getElementById('injGrade')?.value;
+  if (grade) payload.steel_grade = grade;
+  const jsonStr = JSON.stringify(payload).replace(/"/g, '\\"');
+  pre.textContent = `curl -X POST http://127.0.0.1:4580/api/v1/telemetry -H "Content-Type: application/json" -d "${jsonStr}"`;
+}
+
+async function refreshPlcStatusOnly(rebuildCards = false) {
+  const plc = await call('plc:status');
+  if (!plc) return;
+  if (rebuildCards || !plcUnitsRenderedOnce) {
+    renderPlcUnitsCards(plc);
+  }
+  updatePlcRuntimeWidgets(plc);
+}
+
+function renderPlcUnitsCards(plc) {
+  const grid = document.getElementById('plcUnitsGrid');
+  if (!grid || !plc || !Array.isArray(plc.furnaces)) return;
+  plcUnitsRenderedOnce = true;
+
+  const protocols = ['OPC UA', 'Modbus TCP', 'MQTT / HTTP', 'Siemens S7comm'];
+
+  grid.innerHTML = plc.furnaces.map(f => {
+    const fNo = f.furnace_no;
+    const stateClass = f.effective_source === 'PLC_LIVE' ? 'online' : (f.status === 'OFFLINE' ? 'offline' : 'standby');
+    const stateLabel = f.effective_source === 'PLC_LIVE'
+      ? 'ПЛК ОНЛАЙН'
+      : (f.effective_source === 'WAITING_PLC' ? 'ОЖИДАНИЕ ПЛК' : 'РЕЗЕРВ МОДЕЛИ');
+
+    return `
+      <div class="plc-unit-card ${stateClass}" id="plcCard-${fNo}" data-furnace="${fNo}">
+        <div class="plc-unit-head">
+          <span class="plc-unit-title">ДСП-135 №${fNo}</span>
+          <span class="fleet-src-badge ${f.effective_source === 'PLC_LIVE' ? 'plc-live' : (f.effective_source === 'WAITING_PLC' ? 'waiting' : 'model')}" id="plcUnitState-${fNo}">
+            ${stateLabel}
+          </span>
+        </div>
+        <div class="plc-unit-sub">${f.controller}</div>
+
+        <label>Промышленный протокол
+          <select class="plc-inp-proto" data-fno="${fNo}">
+            ${protocols.map(p => `<option value="${p}" ${f.protocol === p ? 'selected' : ''}>${p}</option>`).join('')}
+          </select>
+        </label>
+
+        <div class="plc-field-grid">
+          <label>IP-адрес ПЛК / Шлюза
+            <input type="text" class="plc-inp-host" data-fno="${fNo}" value="${f.host}">
+          </label>
+          <label>Порт TCP
+            <input type="number" class="plc-inp-port" data-fno="${fNo}" value="${f.port}">
+          </label>
+        </div>
+
+        <label>Узел OPC UA / Регистры / Топик
+          <input type="text" class="plc-inp-endpoint" data-fno="${fNo}" value="${f.endpoint.replace(/"/g, '&quot;')}">
+        </label>
+
+        <div class="plc-unit-meta">
+          <span>Пакеты: <b id="plcUnitRx-${fNo}">${f.rx_count || 0}</b></span>
+          <span>Задержка: <b id="plcUnitPing-${fNo}">${f.ping_ms !== null ? f.ping_ms + ' мс' : '—'}</b></span>
+        </div>
+
+        <button class="plc-test-btn" data-test-furnace="${fNo}">ПРОВЕРИТЬ TCP-КАНАЛ ПЛК №${fNo}</button>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.plc-test-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fNo = Number(btn.dataset.testFurnace);
+      // Сначала сохраняем введённый пользователем IP/порт
+      const furnaces = collectPlcCardsConfig();
+      await call('plc:config', { furnaces });
+      btn.textContent = 'ДИАГНОСТИКА TCP...';
+      const res = await call('plc:test', { furnace_no: fNo });
+      btn.textContent = res.ok ? `СВЯЗЬ OK (${res.ping_ms} МС)` : 'УЗЕЛ НЕДОСТУПЕН';
+      await refreshPlcStatusOnly(false);
+      setTimeout(() => {
+        btn.textContent = `ПРОВЕРИТЬ TCP-КАНАЛ ПЛК №${fNo}`;
+      }, 2200);
+    });
+  });
+}
+
+function collectPlcCardsConfig() {
+  const furnaces = {};
+  for (const fNo of [1, 2, 3, 4]) {
+    const protoEl = document.querySelector(`.plc-inp-proto[data-fno="${fNo}"]`);
+    const hostEl = document.querySelector(`.plc-inp-host[data-fno="${fNo}"]`);
+    const portEl = document.querySelector(`.plc-inp-port[data-fno="${fNo}"]`);
+    const epEl = document.querySelector(`.plc-inp-endpoint[data-fno="${fNo}"]`);
+    if (protoEl && hostEl && portEl && epEl) {
+      furnaces[fNo] = {
+        protocol: protoEl.value,
+        host: hostEl.value,
+        port: Number(portEl.value) || 4580,
+        endpoint: epEl.value
+      };
+    }
+  }
+  return furnaces;
+}
+
+function updatePlcRuntimeWidgets(plc) {
+  if (!plc) return;
+
+  document.querySelectorAll('#plcModeSelector .plc-mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.plcmode === plc.mode);
+  });
+
+  const rxEl = document.getElementById('plcTotalRx');
+  if (rxEl) rxEl.textContent = fmtNum(plc.totalRxPackets || 0);
+
+  const urlEl = document.getElementById('plcGatewayUrl');
+  if (urlEl) urlEl.textContent = `POST ${plc.gatewayUrl}`;
+
+  const streamBtn = document.getElementById('btnTogglePlcStream');
+  if (streamBtn) {
+    streamBtn.classList.toggle('stream-on', Boolean(plc.virtualPlcActive));
+    streamBtn.textContent = plc.virtualPlcActive
+      ? 'ЭМУЛЯТОР 4 ПЛК: АКТИВЕН (ОСТАНОВИТЬ)'
+      : 'ЗАПУСТИТЬ ЭМУЛЯТОР 4 ПЛК (HTTP ПОТОК)';
+  }
+
+  // Обновляем метаданные карточек контроллеров без перерисовки инпутов
+  (plc.furnaces || []).forEach(f => {
+    const fNo = f.furnace_no;
+    const rxNode = document.getElementById(`plcUnitRx-${fNo}`);
+    if (rxNode) rxNode.textContent = f.rx_count || 0;
+    const pingNode = document.getElementById(`plcUnitPing-${fNo}`);
+    if (pingNode) pingNode.textContent = f.ping_ms !== null ? `${f.ping_ms} мс` : '—';
+
+    const stNode = document.getElementById(`plcUnitState-${fNo}`);
+    if (stNode) {
+      stNode.className = `fleet-src-badge ${f.effective_source === 'PLC_LIVE' ? 'plc-live' : (f.effective_source === 'WAITING_PLC' ? 'waiting' : 'model')}`;
+      stNode.textContent = f.effective_source === 'PLC_LIVE'
+        ? 'ПЛК ОНЛАЙН'
+        : (f.effective_source === 'WAITING_PLC' ? 'ОЖИДАНИЕ ПЛК' : 'РЕЗЕРВ МОДЕЛИ');
+    }
+
+    const cardNode = document.getElementById(`plcCard-${fNo}`);
+    if (cardNode) {
+      cardNode.className = `plc-unit-card ${f.effective_source === 'PLC_LIVE' ? 'online' : (f.status === 'OFFLINE' ? 'offline' : 'standby')}`;
+    }
+  });
+
+  // Рендерим терминал кадров обмена
+  const logEl = document.getElementById('plcPacketLog');
+  if (logEl && Array.isArray(plc.packetLog)) {
+    if (!plc.packetLog.length) {
+      logEl.innerHTML = `<div class="plc-log-line info">Ожидание пакетов телеметрии на порту ${plc.gatewayPort}...</div>`;
+    } else {
+      logEl.innerHTML = plc.packetLog.map(item => {
+        const timeStr = new Date(item.ts).toLocaleTimeString('ru-RU');
+        return `
+          <div class="plc-log-line ${item.dir}">
+            <span class="plc-log-ts">[${timeStr}]</span>
+            <span class="plc-log-proto">[${item.protocol}]</span>
+            <span class="plc-log-msg">${item.summary}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+// ==========================================================================
+// 9. Поиск по словарю
 // ==========================================================================
 function setupGlossarySearch() {
   const searchInput = document.getElementById('glossarySearch');
@@ -963,7 +1284,7 @@ function setupGlossarySearch() {
 }
 
 // ==========================================================================
-// 9. Старт приложения
+// 10. Старт приложения
 // ==========================================================================
 window.addEventListener('DOMContentLoaded', () => {
   const now = new Date();
@@ -972,6 +1293,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   initFurnace();
   setupStagePreviewClicks();
+  initPlcView();
   loadDashboard().then(() => {
     window.liveTimerId = setInterval(tickLive, 1500);
   });
@@ -981,3 +1303,4 @@ window.addEventListener('DOMContentLoaded', () => {
   loadMaterials();
   setupGlossarySearch();
 });
+

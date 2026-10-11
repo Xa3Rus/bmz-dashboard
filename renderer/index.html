@@ -60,6 +60,14 @@
           <span class="nav-title">Справочники</span>
         </button>
 
+        <button class="nav-btn" data-view="plc">
+          <svg class="nav-svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd"/>
+          </svg>
+          <span class="nav-title">Подключение ПЛК</span>
+          <span class="nav-chip" id="navPlcBadge">ГИБРИД</span>
+        </button>
+
         <button class="nav-btn" data-view="help">
           <svg class="nav-svg" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 10-1-1zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
@@ -70,8 +78,8 @@
 
       <div class="sidebar-footer">
         <div class="db-status">
-          <span class="status-dot ok"></span>
-          <span id="connState">БД: SQLite CONNECTED</span>
+          <span class="status-dot ok" id="connDot"></span>
+          <span id="connState">ШЛЮЗ АСУ ТП: 4580 OK</span>
         </div>
         <div class="sys-info">АСУ ТП ЭСПЦ · ОУАиБД</div>
       </div>
@@ -656,7 +664,180 @@
       </section>
 
       <!-- ====================================================================
-           6. Вкладка: Документация
+           6. Вкладка: Подключение ПЛК и шлюз АСУ ТП (Уровень 1 / Уровень 2)
+           ==================================================================== -->
+      <section id="view-plc" class="view">
+        <!-- Верхняя панель режима источника телеметрии и состояния шлюза -->
+        <div class="panel plc-top-panel">
+          <div class="plc-top-row">
+            <div>
+              <div class="panel-title">ШЛЮЗ ТЕЛЕМЕТРИИ АСУ ТП ЭСПЦ-2 · ИНТЕГРАЦИЯ С ПЛК ПЕЧЕЙ ДСП-135</div>
+              <div class="panel-sub">Опрос промышленных контроллеров (OPC UA / Modbus TCP / MQTT) и приёмный локальный HTTP REST-шлюз в режиме Read-Only DMZ</div>
+            </div>
+
+            <div class="plc-mode-selector" id="plcModeSelector">
+              <button class="plc-mode-btn" data-plcmode="simulation">МОДЕЛЬ (СИМУЛЯЦИЯ)</button>
+              <button class="plc-mode-btn active" data-plcmode="hybrid">ГИБРИД (ПЛК + МОДЕЛЬ)</button>
+              <button class="plc-mode-btn" data-plcmode="external">ТОЛЬКО ПЛК (EXTERNAL)</button>
+            </div>
+          </div>
+
+          <div class="plc-gateway-bar">
+            <div class="plc-gw-item">
+              <span class="plc-gw-lbl">ПРИЁМНЫЙ HTTP-ШЛЮЗ АРМ</span>
+              <code class="plc-gw-code" id="plcGatewayUrl">POST http://127.0.0.1:4580/api/v1/telemetry</code>
+            </div>
+            <div class="plc-gw-item">
+              <span class="plc-gw-lbl">РЕЖИМ ЗАЩИТЫ ЦЕХА</span>
+              <span class="status-tag ok">READ-ONLY · DMZ ИЗОЛЯЦИЯ</span>
+            </div>
+            <div class="plc-gw-item">
+              <span class="plc-gw-lbl">ПРИНЯТО ПАКЕТОВ ОТ ПЛК</span>
+              <b class="plc-gw-val" id="plcTotalRx">0</b>
+            </div>
+            <div class="plc-gw-actions">
+              <button class="btn-secondary" id="btnTogglePlcStream">ЗАПУСТИТЬ ЭМУЛЯТОР 4 ПЛК (HTTP ПОТОК)</button>
+              <button class="btn-primary btn-sm" id="btnSavePlcConfig">СОХРАНИТЬ КОНФИГУРАЦИЮ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Карточки настройки каналов связи 4 параллельных печей ДСП-135 №1..4 -->
+        <div class="plc-units-grid" id="plcUnitsGrid">
+          <!-- Динамически заполняется 4 карточками контроллеров ДСП №1..4 -->
+        </div>
+
+        <!-- Нижний блок: Стенд инжекции реальных пакетов + Живой монитор протокола обмена -->
+        <div class="plc-bottom-grid">
+          <!-- Левая колонка: Отправка реального пакета телеметрии в шлюз + Пример внешнего подключения -->
+          <div class="panel">
+            <div class="panel-title-row">
+              <div class="panel-title">СТЕНД ПЕРЕДАЧИ ПАКЕТА ТЕЛЕМЕТРИИ (ПЛК ➔ АРМ)</div>
+              <span class="badge-accent">LIVE INJECTION</span>
+            </div>
+            <p class="panel-desc">Отправка реального кадра телеметрии в шлюз печи для проверки реакции 3D-двойника, графиков и аварийной сигнализации.</p>
+
+            <div class="form plc-inject-form">
+              <div class="form-row-2">
+                <label>Целевой агрегат
+                  <select id="injFurnace" class="select-styled">
+                    <option value="1">ДСП-135 №1 (Siemens S7-1518F)</option>
+                    <option value="2">ДСП-135 №2 (Modicon M580)</option>
+                    <option value="3">ДСП-135 №3 (Siemens S7-1516)</option>
+                    <option value="4">ДСП-135 №4 (Шлюз Уровня 2)</option>
+                  </select>
+                </label>
+                <label>Технологическая стадия
+                  <select id="injStage" class="select-styled">
+                    <option value="Завалка">Завалка (открытие свода)</option>
+                    <option value="Плавление" selected>Плавление (дуга 42–45 МВт)</option>
+                    <option value="Доводка">Доводка (продувка O₂)</option>
+                    <option value="Выпуск">Выпуск (наклон EBT в ковш)</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="form-row-3">
+                <label>Температура ванны, °C
+                  <input type="number" id="injTemp" value="1615" min="25" max="1750" step="5">
+                </label>
+                <label>Мощность дуги, МВт
+                  <input type="number" id="injPower" value="43.8" min="0" max="55" step="0.5">
+                </label>
+                <label>Минута цикла, мин
+                  <input type="number" id="injTime" value="28.5" min="0.5" max="64.5" step="1">
+                </label>
+              </div>
+
+              <div class="form-row-2">
+                <label>Марка стали (Уровень 2)
+                  <select id="injGrade" class="select-styled">
+                    <option value="">Без изменения</option>
+                    <option value="Ст3сп">Ст3сп</option>
+                    <option value="09Г2С">09Г2С</option>
+                    <option value="40Х">40Х</option>
+                    <option value="65Г">65Г</option>
+                  </select>
+                </label>
+                <label>Сигнал тревоги ПЛК (опционально)
+                  <input type="text" id="injAlert" placeholder="Напр.: Перегрев водоохлаждаемой панели №4">
+                </label>
+              </div>
+
+              <button class="btn-primary" id="btnSendPlcPacket">ОТПРАВИТЬ ПАКЕТ ТЕЛЕМЕТРИИ В ПЕЧЬ</button>
+            </div>
+
+            <div class="plc-code-box">
+              <div class="plc-code-title">ПРИМЕР ОТПРАВКИ ДАННЫХ С ВНЕШНЕГО ПЛК / PYTHON / POWERSHELL / CURL:</div>
+              <pre class="plc-code-pre" id="plcCurlSample">curl -X POST http://127.0.0.1:4580/api/v1/telemetry -H "Content-Type: application/json" -d "{\"furnace_no\":1,\"temp_c\":1615,\"power_mw\":43.8,\"t_min\":28.5,\"stage\":\"Плавление\"}"</pre>
+            </div>
+          </div>
+
+          <!-- Правая колонка: Живой монитор кадров обмена и таблица регистров ПЛК -->
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">МОНИТОР ПРОТОКОЛА ОБМЕНА (УРОВЕНЬ 1 ➔ УРОВЕНЬ 2)</div>
+                <div class="panel-sub">Журнал входящих кадров телеметрии и диагностики TCP-соединений</div>
+              </div>
+              <span class="live-pill" id="plcMonitorState">ОНЛАЙН</span>
+            </div>
+
+            <div class="plc-log-terminal" id="plcPacketLog">
+              <div class="plc-log-line info">Ожидание пакетов телеметрии на порту 4580...</div>
+            </div>
+
+            <div class="panel-title" style="margin-top: 14px; margin-bottom: 8px;">КАРТА ТЕГОВ OPC UA И РЕГИСТРОВ MODBUS TCP ДСП-135</div>
+            <div class="tbl-container">
+              <table class="tbl plc-map-tbl">
+                <thead>
+                  <tr>
+                    <th>Параметр печи</th>
+                    <th>Узел OPC UA (S7-1500)</th>
+                    <th>Регистр Modbus</th>
+                    <th>Тип / Ед. изм.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><b>Температура жидкой ванны</b></td>
+                    <td><code>ns=3;s="DB_EAF"."BathTemp_C"</code></td>
+                    <td><code>40001 (UINT16)</code></td>
+                    <td>REAL · °C (0..1800)</td>
+                  </tr>
+                  <tr>
+                    <td><b>Активная мощность дуги</b></td>
+                    <td><code>ns=3;s="DB_EAF"."ActivePower_MW"</code></td>
+                    <td><code>40003 (FLOAT32)</code></td>
+                    <td>REAL · МВт (0..55.0)</td>
+                  </tr>
+                  <tr>
+                    <td><b>Хронометраж текущей плавки</b></td>
+                    <td><code>ns=3;s="DB_EAF"."CycleTime_Min"</code></td>
+                    <td><code>40005 (FLOAT32)</code></td>
+                    <td>REAL · мин (0..65.0)</td>
+                  </tr>
+                  <tr>
+                    <td><b>Код технологической стадии</b></td>
+                    <td><code>ns=3;s="DB_EAF"."StageCode"</code></td>
+                    <td><code>40007 (UINT16)</code></td>
+                    <td>1=Завалка, 2=Плавл, 3=Дов, 4=Вып</td>
+                  </tr>
+                  <tr>
+                    <td><b>Наклон люльки / Полож. свода</b></td>
+                    <td><code>ns=3;s="DB_EAF"."TiltAngle_Deg"</code></td>
+                    <td><code>40009 (INT16)</code></td>
+                    <td>REAL · град (-5..+18°)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           7. Вкладка: Документация
            ==================================================================== -->
       <section id="view-help" class="view">
         <div class="panel">

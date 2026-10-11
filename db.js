@@ -1,7 +1,8 @@
-// Слой данных: SQLite (sql.js) + генератор данных + симуляция активной плавки
+// Слой данных: SQLite (sql.js) + генератор данных + коннектор промышленных ПЛК (OPC UA / Modbus TCP / MQTT / HTTP)
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
+const plcConnector = require('./plcConnector');
 
 let db = null;
 let dbFile = null;
@@ -72,6 +73,8 @@ function run(sql, params = []) {
 
 async function init(file) {
   dbFile = file;
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const SQL = await initSqlJs({
     locateFile: f => path.join(__dirname, 'node_modules', 'sql.js', 'dist', f)
   });
@@ -84,7 +87,10 @@ async function init(file) {
     seed();
     persist();
   }
+  const plcCfgPath = path.join(dir, 'plc-config.json');
+  plcConnector.init(plcCfgPath, packet => applyExternalTelemetry(packet));
 }
+
 
 function createSchema() {
   db.run(`
@@ -236,10 +242,11 @@ function seed() {
   }
 }
 
-// ---------- Симуляция 4 параллельных активных печей ----------
+// ---------- Симуляция и приём телеметрии ПЛК для 4 параллельных печей ----------
 
 function activeMelts() {
   const list = [];
+  const plcStat = plcConnector.getStatus();
   for (let fNo = 1; fNo <= 4; fNo++) {
     let m = q("SELECT * FROM melts WHERE status='active' AND furnace_no=? ORDER BY id DESC LIMIT 1", [fNo])[0];
     if (!m) {
@@ -253,12 +260,16 @@ function activeMelts() {
       power_mw: 0
     };
     const st = stageAt(lastPt.t_min);
+    const unitCfg = plcStat.furnaces.find(u => u.furnace_no === fNo) || {};
     list.push({
       ...m,
       t_min: lastPt.t_min,
       temp_c: lastPt.temp_c,
       power_mw: lastPt.power_mw,
-      stage: st.name
+      stage: st.name,
+      plc_source: unitCfg.effective_source || 'MODEL',
+      plc_protocol: unitCfg.protocol || 'OPC UA',
+      plc_rx_count: unitCfg.rx_count || 0
     });
   }
   return list;
@@ -279,33 +290,104 @@ function pickDistinctGrade(excludeGrades) {
   return available.length ? pick(available) : pick(GRADES).name;
 }
 
+function startNextActiveMelt(melt, overrideGrade = null) {
+  run("UPDATE melts SET status='completed' WHERE id=?", [melt.id]);
+  const otherActiveGrades = activeMelts()
+    .filter(x => x.furnace_no !== melt.furnace_no)
+    .map(x => x.steel_grade);
+  const nextGrade = overrideGrade || pickDistinctGrade(otherActiveGrades);
+  const d = new Date();
+  const nextNum = `ПЛ-${melt.furnace_no}-` + d.toISOString().slice(5, 10).replace('-', '') + '-' + String(Math.floor(rnd(150, 980))).padStart(3, '0');
+  const newMeltId = run(
+    'INSERT INTO melts (furnace_no, num, started_at, steel_grade, mass_t, energy_kwh, duration_min, status, operator) VALUES (?,?,?,?,?,?,?,?,?)',
+    [melt.furnace_no, nextNum, d.toISOString(), nextGrade, Math.round(rnd(102, 126)), 0, 65, 'active', OPERATORS[(melt.furnace_no - 1) % OPERATORS.length]]
+  );
+  run('INSERT INTO temp_points (melt_id, t_min, temp_c, power_mw) VALUES (?,?,?,?)',
+    [newMeltId, 0.5, Math.round(curveValue(0.5, 'temp')), Math.round(curveValue(0.5, 'power') * 10) / 10]);
+  run('INSERT INTO alerts (melt_id, t_min, level, message, created_at) VALUES (?,?,?,?,?)',
+    [melt.id, melt.duration_min, 'info', `[ДСП №${melt.furnace_no}] Плавка ${melt.num} (${melt.steel_grade}) завершена. Выпуск в ковш.`, new Date().toISOString()]);
+  return newMeltId;
+}
+
+// Запись реального пакета телеметрии от внешнего ПЛК / HTTP-шлюза
+function applyExternalTelemetry(packet) {
+  if (!db) return null;
+  const fNo = Number(packet.furnace_no) || 1;
+  let melt = activeMelt(fNo);
+  if (!melt) return null;
+
+  if (packet.steel_grade && packet.steel_grade !== melt.steel_grade) {
+    run('UPDATE melts SET steel_grade=? WHERE id=?', [packet.steel_grade, melt.id]);
+    melt.steel_grade = packet.steel_grade;
+  }
+  if (packet.operator && packet.operator !== melt.operator) {
+    run('UPDATE melts SET operator=? WHERE id=?', [packet.operator, melt.id]);
+    melt.operator = packet.operator;
+  }
+
+  const prevT = activeProgress(melt.id);
+  let tRounded = packet.t_min !== undefined ? Number(packet.t_min) : Math.round((prevT + 0.5) * 10) / 10;
+
+  // Если передана стадия без минуты, синхронизируем минуту под выбранную стадию
+  if (packet.stage && packet.t_min === undefined) {
+    const stObj = STAGES.find(s => s.name.toLowerCase() === String(packet.stage).toLowerCase());
+    if (stObj && (tRounded < stObj.from || tRounded >= stObj.to)) {
+      tRounded = stObj.from + 1.5;
+    }
+  }
+
+  // Если внешний ПЛК прислал начало нового цикла (t_min сбросился) или превысил длительность
+  if (tRounded >= melt.duration_min) {
+    startNextActiveMelt(melt, packet.steel_grade || null);
+    persist();
+    return { status: 'cycle_completed', furnace_no: fNo };
+  }
+  if (tRounded < prevT) {
+    // При принудительной установке ранней стадии очищаем будущие точки, чтобы график и степпер перешли на заданную минуту
+    run('DELETE FROM temp_points WHERE melt_id=? AND t_min >= ?', [melt.id, tRounded]);
+  }
+
+  const temp = packet.temp_c !== undefined ? Number(packet.temp_c) : Math.round(curveValue(tRounded, 'temp'));
+  const power = packet.power_mw !== undefined ? Number(packet.power_mw) : Math.round(curveValue(tRounded, 'power') * 10) / 10;
+  const dt = Math.max(0.2, tRounded - prevT);
+
+  run('INSERT INTO temp_points (melt_id, t_min, temp_c, power_mw) VALUES (?,?,?,?)', [melt.id, tRounded, temp, power]);
+  run('UPDATE melts SET energy_kwh=? WHERE id=?', [Math.round(melt.energy_kwh + power * dt * 1000 / 60), melt.id]);
+
+  if (packet.alert && packet.alert.message) {
+    run('INSERT INTO alerts (melt_id, t_min, level, message, created_at) VALUES (?,?,?,?,?)',
+      [melt.id, Math.round(tRounded), packet.alert.level || 'warn', `[ДСП №${fNo} · ПЛК] ${packet.alert.message}`, new Date().toISOString()]);
+  } else if (temp >= 1660) {
+    run('INSERT INTO alerts (melt_id, t_min, level, message, created_at) VALUES (?,?,?,?,?)',
+      [melt.id, Math.round(tRounded), 'crit', `[ДСП №${fNo} · ПЛК] Превышение температурной уставки (${temp} °C > 1660 °C)`, new Date().toISOString()]);
+  }
+
+  persist();
+  return { furnace_no: fNo, melt_id: melt.id, t_min: tRounded, temp_c: temp, power_mw: power };
+}
+
 function tickLive() {
+  // В режиме строгого внешнего ПЛК математическая модель отключена
+  if (plcConnector.mode === 'external') {
+    return [];
+  }
+
   const currentActives = activeMelts();
   const results = [];
 
   for (const melt of currentActives) {
+    // В гибридном режиме не перезаписываем печь моделью, если на неё идут живые пакеты от ПЛК
+    if (plcConnector.mode === 'hybrid' && plcConnector.isFurnaceLiveExternal(melt.furnace_no)) {
+      continue;
+    }
+
     let t = activeProgress(melt.id);
     const dt = rnd(0.45, 0.85);
     t += dt;
     const done = t >= melt.duration_min;
 
     if (done) {
-      // Завершаем плавку на данной печи и запускаем следующую с другой маркой стали
-      run("UPDATE melts SET status='completed' WHERE id=?", [melt.id]);
-      const otherActiveGrades = activeMelts()
-        .filter(x => x.furnace_no !== melt.furnace_no)
-        .map(x => x.steel_grade);
-      const nextGrade = pickDistinctGrade(otherActiveGrades);
-      const d = new Date();
-      const nextNum = `ПЛ-${melt.furnace_no}-` + d.toISOString().slice(5, 10).replace('-', '') + '-' + String(Math.floor(rnd(150, 980))).padStart(3, '0');
-      const newMeltId = run(
-        'INSERT INTO melts (furnace_no, num, started_at, steel_grade, mass_t, energy_kwh, duration_min, status, operator) VALUES (?,?,?,?,?,?,?,?,?)',
-        [melt.furnace_no, nextNum, d.toISOString(), nextGrade, Math.round(rnd(102, 126)), 0, 65, 'active', OPERATORS[(melt.furnace_no - 1) % OPERATORS.length]]
-      );
-      run('INSERT INTO temp_points (melt_id, t_min, temp_c, power_mw) VALUES (?,?,?,?)',
-        [newMeltId, 0.5, Math.round(curveValue(0.5, 'temp')), Math.round(curveValue(0.5, 'power') * 10) / 10]);
-      run('INSERT INTO alerts (melt_id, t_min, level, message, created_at) VALUES (?,?,?,?,?)',
-        [melt.id, melt.duration_min, 'info', `[ДСП №${melt.furnace_no}] Плавка ${melt.num} (${melt.steel_grade}) завершена. Выпуск в ковш.`, new Date().toISOString()]);
+      startNextActiveMelt(melt);
       continue;
     }
 
@@ -338,7 +420,8 @@ function api(method, args = {}) {
       const avgEnergy = Math.round(q('SELECT AVG(energy_kwh/mass_t) AS v FROM melts WHERE status="completed"')[0].v);
       const avgDur = Math.round(q('SELECT AVG(duration_min) AS v FROM melts WHERE status="completed"')[0].v);
       const month = q("SELECT COUNT(*) AS n FROM melts WHERE started_at >= date('now','-30 day')")[0].n;
-      return { active, actives, meltsToday: today, avgEnergyPerT: avgEnergy, avgDuration: avgDur, meltsMonth: month };
+      const plc = plcConnector.getStatus();
+      return { active, actives, meltsToday: today, avgEnergyPerT: avgEnergy, avgDuration: avgDur, meltsMonth: month, plc };
     }
     case 'melt:list': {
       return q('SELECT id, furnace_no, num, started_at, steel_grade, mass_t, energy_kwh, duration_min, status, operator FROM melts ORDER BY started_at DESC LIMIT 120');
@@ -367,10 +450,26 @@ function api(method, args = {}) {
     case 'shihta:calc': {
       return calcShihta(args);
     }
+    case 'plc:status': {
+      return plcConnector.getStatus();
+    }
+    case 'plc:config': {
+      return plcConnector.updateConfig(args);
+    }
+    case 'plc:test': {
+      return plcConnector.testConnection(args.furnace_no);
+    }
+    case 'plc:inject': {
+      return plcConnector.ingestTelemetryPacket(args, 'ARM-OPERATOR');
+    }
+    case 'plc:stream': {
+      return plcConnector.toggleVirtualPlcStream(args.enable, () => activeMelts());
+    }
     default:
       throw new Error('Unknown API method: ' + method);
   }
 }
+
 
 // ---------- Расчёт шихты ----------
 
