@@ -1,0 +1,20 @@
+{
+  "name": "bmz-dashboard",
+  "version": "1.0.0",
+  "description": "Цифровая плавка — панель мониторинга ДСП (БМЗ)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "Практикант ОУАиБД БМЗ",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.7.0"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "sql.js": "^1.14.2",
+    "three": "^0.186.1"
+  }
+}

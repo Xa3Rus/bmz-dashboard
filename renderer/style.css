@@ -1,0 +1,1794 @@
+/* АСУ ТП ЭСПЦ ОАО «БМЗ» — Промышленный дизайн-код (SCADA / MES HMI) */
+
+:root {
+  --bg: #0a0e14;
+  --bg-surface: #0e141c;
+  --panel: #111722;
+  --panel-2: #16202e;
+  --panel-3: #1c2838;
+  --border: #1e2b3c;
+  --border-light: #28394e;
+  --border-focus: #ea580c;
+
+  --text: #e2e8f0;
+  --text-muted: #7b8d9f;
+  --text-dim: #485869;
+
+  --accent: #ea580c;
+  --accent-light: #f97316;
+  --accent-glow: rgba(234, 88, 12, 0.25);
+
+  --cyan: #0284c7;
+  --cyan-light: #38bdf8;
+
+  --ok: #10b981;
+  --ok-bg: rgba(16, 185, 129, 0.12);
+  --warn: #d97706;
+  --warn-bg: rgba(217, 119, 6, 0.12);
+  --crit: #dc2626;
+  --crit-bg: rgba(220, 38, 38, 0.15);
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Промышленные тонкие полосы прокрутки */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg);
+}
+
+/* ==========================================================================
+   Боковая панель (Sidebar)
+   ========================================================================== */
+.sidebar {
+  width: 250px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 6px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.logo-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.logo-mark-text {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+}
+
+.logo-title {
+  font-weight: 800;
+  font-size: 13.5px;
+  letter-spacing: 0.8px;
+  color: #fff;
+}
+
+.logo-sub {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
+}
+
+.nav-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  gap: 10px;
+}
+
+.nav-svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.nav-title {
+  flex: 1;
+  font-weight: 500;
+}
+
+.nav-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-chip {
+  background: rgba(234, 88, 12, 0.15);
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
+.alert-chip {
+  background: var(--crit-bg);
+  color: var(--crit);
+}
+
+.nav-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.nav-btn.active {
+  background: var(--panel-2);
+  color: #fff;
+  border-color: var(--border-light);
+  border-left: 3px solid var(--accent);
+  font-weight: 600;
+}
+
+.nav-btn.active .nav-svg {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px 6px 2px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.db-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ok);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  margin-bottom: 3px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.sys-info {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* ==========================================================================
+   Главная область и Верхняя панель (Topbar)
+   ========================================================================== */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.topbar h1 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.view-sub {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+
+.topbar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.heat-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(234, 88, 12, 0.1);
+  border: 1px solid rgba(234, 88, 12, 0.35);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
+.pulse-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.shift-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.chip-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.clock-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   Вьюшки и Панели (Views & Panels)
+   ========================================================================== */
+.view {
+  display: none;
+  padding: 16px 20px 24px;
+  overflow-y: auto;
+  gap: 14px;
+  flex-direction: column;
+  flex: 1;
+}
+
+.view.active {
+  display: flex;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.panel-sub {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+
+.panel-desc {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0 12px;
+}
+
+/* ==========================================================================
+   Сводная панель 4 параллельных печей (Furnace Fleet Bar)
+   ========================================================================== */
+.furnace-fleet-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.fleet-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.fleet-card:hover {
+  border-color: var(--border-light);
+  background: var(--panel-2);
+}
+
+.fleet-card.active {
+  border-color: var(--accent);
+  background: rgba(234, 88, 12, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.25);
+}
+
+.fleet-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.fleet-unit-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.fleet-card.active .fleet-dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.fleet-grade {
+  background: rgba(2, 132, 199, 0.18);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: var(--cyan-light);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+}
+
+.fleet-mid {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+}
+
+.fleet-melt-num {
+  color: var(--text-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-stage-tag {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-light);
+  letter-spacing: 0.4px;
+}
+
+.fleet-metrics {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+
+.fleet-metrics b {
+  color: #fff;
+  font-weight: 700;
+}
+
+.fleet-bar-track {
+  width: 100%;
+  height: 4px;
+  background: #090d13;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.fleet-bar-fill {
+  height: 100%;
+  background: var(--ok);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.fleet-card.active .fleet-bar-fill {
+  background: var(--accent);
+}
+
+.tag-furnace {
+  background: var(--panel-2);
+  border: 1px solid var(--border-light);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Степпер стадий (Stage Stepper)
+   ========================================================================== */
+.stage-stepper-panel {
+  padding: 13px 16px;
+  background: var(--panel);
+}
+
+.stepper-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.stepper-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stepper-label {
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.8px;
+  font-size: 11px;
+}
+
+.stepper-melt-tag {
+  background: var(--panel-2);
+  border: 1px solid var(--border-light);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  font-weight: 700;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-time {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stepper-time b {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-percent {
+  background: rgba(234, 88, 12, 0.15);
+  border: 1px solid rgba(234, 88, 12, 0.35);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Общий мастер-прогресс цикла */
+.cycle-master-bar {
+  width: 100%;
+  height: 5px;
+  background: #0b0f15;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.cycle-master-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ok) 0%, var(--accent) 100%);
+  border-radius: 2px;
+  transition: width 0.35s ease;
+}
+
+.stepper-track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.step-node {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.step-node:hover {
+  border-color: var(--border-light);
+  background: var(--panel-3);
+}
+
+.step-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.step-dot {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.step-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-name {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+}
+
+.step-state {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-range {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-bar-track {
+  width: 100%;
+  height: 4px;
+  background: #0a0e14;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.step-bar-fill {
+  width: 0%;
+  height: 100%;
+  background: var(--text-dim);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Статус: Завершена */
+.step-node.completed {
+  border-color: rgba(16, 185, 129, 0.38);
+  background: rgba(16, 185, 129, 0.04);
+}
+.step-node.completed .step-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+.step-node.completed .step-name {
+  color: var(--ok);
+}
+.step-node.completed .step-state {
+  color: var(--ok);
+}
+.step-node.completed .step-bar-fill {
+  background: var(--ok);
+}
+
+/* Статус: Активная стадия */
+.step-node.active {
+  border-color: var(--accent);
+  background: rgba(234, 88, 12, 0.09);
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.2);
+}
+.step-node.active .step-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.step-node.active .step-name {
+  color: #fff;
+}
+.step-node.active .step-state {
+  color: var(--accent-light);
+}
+.step-node.active .step-bar-fill {
+  background: var(--accent);
+}
+
+/* Статус: Предпросмотр 3D пользователем */
+.step-node.preview-selected {
+  outline: 2px solid var(--cyan-light);
+  outline-offset: -1px;
+}
+
+/* ==========================================================================
+   KPI Карточки
+   ========================================================================== */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.kpi-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  position: relative;
+  cursor: help;
+}
+
+.kpi-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+.kpi-unit {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.kpi-trend {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+}
+.kpi-trend.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+/* ==========================================================================
+   3D Сцена и Панели мониторинга
+   ========================================================================== */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr;
+  gap: 14px;
+  min-height: 480px;
+}
+
+.main-vis-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.stage-badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: rgba(234, 88, 12, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(234, 88, 12, 0.35);
+}
+
+.vis-mode-switch {
+  display: flex;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-tab {
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-xs);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.mode-tab:hover {
+  color: #fff;
+}
+
+.mode-tab.active {
+  background: var(--panel-3);
+  color: #fff;
+  border: 1px solid var(--border-light);
+}
+
+.vis-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 380px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: #0c1016;
+  border: 1px solid var(--border);
+  margin-top: 6px;
+}
+
+.furnace3d-wrap {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.furnace3d-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+/* Строгий инженерный HUD (CAD Telemetry Overlay) */
+.hud-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.hud-badges {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.hud-badge {
+  background: rgba(14, 20, 28, 0.9);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xs);
+  padding: 5px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.hud-badge-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.hud-badge-val {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  margin-top: 1px;
+}
+
+.arc-badge {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.arc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.arc-badge.active .arc-dot {
+  background: var(--cyan-light);
+}
+.arc-badge.active {
+  color: var(--cyan-light);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.hud-controls {
+  position: absolute;
+  bottom: 10px;
+  right: 12px;
+  display: flex;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.hud-btn {
+  background: rgba(14, 20, 28, 0.92);
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  padding: 5px 10px;
+  border-radius: var(--radius-xs);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.hud-btn:hover {
+  background: var(--panel-3);
+  color: #fff;
+}
+
+.hud-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.hud-hint {
+  align-self: flex-start;
+  background: rgba(14, 20, 28, 0.88);
+  border: 1px solid rgba(48, 63, 84, 0.5);
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Контейнер графиков */
+.chart-wrap {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 10px 14px;
+  display: none;
+}
+
+.vis-viewport.mode-split .furnace3d-wrap {
+  width: 50%;
+  right: auto;
+  border-right: 1px solid var(--border);
+}
+.vis-viewport.mode-split .chart-wrap {
+  display: block;
+  left: 50%;
+  width: 50%;
+}
+.vis-viewport.mode-chart .furnace3d-wrap {
+  display: none;
+}
+.vis-viewport.mode-chart .chart-wrap {
+  display: block;
+}
+.vis-viewport.mode-3d .chart-wrap {
+  display: none;
+}
+
+/* ==========================================================================
+   Датчики и параметры (Gauges & Telemetry List)
+   ========================================================================== */
+.side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-pill {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--ok);
+}
+
+.gauge-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.gauge-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+}
+
+.gauge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.gauge-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.gauge-val {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge-meter-track {
+  height: 6px;
+  background: #0a0e14;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.gauge-meter-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.temp-fill {
+  background: linear-gradient(90deg, #0284c7 0%, #ea580c 75%, #dc2626 100%);
+}
+
+.power-fill {
+  background: var(--cyan);
+}
+
+.gauge-limit-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--crit);
+  z-index: 2;
+}
+
+.gauge-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.crit-marker {
+  color: var(--crit);
+  font-weight: 700;
+}
+
+.params-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.param-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border-radius: var(--radius-xs);
+  border-left: 2px solid var(--border-light);
+}
+
+.p-label {
+  color: var(--text-muted);
+}
+
+.p-val {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+.tag-grade {
+  background: rgba(2, 132, 199, 0.15);
+  color: var(--cyan-light);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mini-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mini-alert {
+  font-size: 11.5px;
+  padding: 7px 9px;
+  border-radius: var(--radius-xs);
+  border-left: 3px solid;
+  background: var(--panel-2);
+  line-height: 1.4;
+}
+
+.mini-alert .when {
+  color: var(--text-dim);
+  font-size: 10px;
+  display: block;
+  margin-top: 2px;
+}
+
+.mini-alert.warn { border-color: var(--warn); color: #fde68a; }
+.mini-alert.crit { border-color: var(--crit); color: #fca5a5; }
+.mini-alert.info { border-color: var(--cyan); color: var(--text); }
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Таблицы (Data Grids)
+   ========================================================================== */
+.tbl-container {
+  overflow-x: auto;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  margin-top: 10px;
+}
+
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  background: var(--panel);
+}
+
+.tbl th {
+  text-align: left;
+  padding: 9px 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.tbl td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.tbl tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tbl tbody tr:hover {
+  background: var(--panel-2);
+}
+
+.tbl tbody tr.active-melt {
+  background: rgba(234, 88, 12, 0.08);
+  border-left: 3px solid var(--accent);
+}
+
+.tbl tbody tr.active-melt td:first-child {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.status {
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.status.completed {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.status.active {
+  background: rgba(234, 88, 12, 0.2);
+  color: var(--accent);
+}
+
+.lvl {
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.lvl.warn { background: var(--warn-bg); color: var(--warn); }
+.lvl.crit { background: var(--crit-bg); color: var(--crit); }
+.lvl.info { background: rgba(2, 132, 199, 0.15); color: var(--cyan-light); }
+
+.warn-count-badge {
+  background: var(--warn-bg);
+  color: var(--warn);
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.ok-badge {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* Фильтры таблиц */
+.table-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-box input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 12.5px;
+  outline: none;
+  width: 240px;
+}
+
+.search-box input:focus {
+  border-color: var(--accent);
+}
+
+.select-styled {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.select-styled:focus {
+  border-color: var(--accent);
+}
+
+.melts-summary-chips {
+  display: flex;
+  gap: 16px;
+  margin: 10px 0 2px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.chip-item b {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Детализация плавки */
+.detail-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.detail-chart-box {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+}
+
+.detail-kpi-box {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+}
+
+.detail-kpi-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.detail-kpi-val {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-close {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 5px 12px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-close:hover {
+  background: var(--panel-3);
+  color: #fff;
+}
+
+/* Алерты кнопки */
+.alert-filter-group {
+  display: flex;
+  gap: 4px;
+}
+
+.alert-pill-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 5px 10px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.alert-pill-btn.active {
+  background: var(--panel-3);
+  border-color: var(--border-light);
+  color: #fff;
+}
+
+.alert-pill-btn.btn-crit.active { background: var(--crit-bg); color: var(--crit); border-color: var(--crit); }
+.alert-pill-btn.btn-warn.active { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.alert-pill-btn.btn-info.active { background: rgba(2, 132, 199, 0.2); color: var(--cyan-light); border-color: var(--cyan); }
+
+/* ==========================================================================
+   Расчёт шихты (Shihta View)
+   ========================================================================== */
+.shihta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.badge-accent {
+  background: rgba(234, 88, 12, 0.15);
+  color: var(--accent);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.status-tag {
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.status-tag.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form label {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 600;
+}
+
+.form input,
+.form select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+.form input:focus,
+.form select:focus {
+  border-color: var(--accent);
+}
+
+.form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.field-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.btn-primary {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.btn-primary:hover {
+  background: var(--accent-light);
+}
+
+.sh-kpis-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.sh-kpi {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+}
+
+.sh-kpi-lbl {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sh-kpi-val {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.o2-kpi .sh-kpi-val {
+  color: var(--cyan-light);
+}
+
+.sh-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.sh-section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.sh-chart-wrap {
+  height: 160px;
+  position: relative;
+  background: var(--panel-2);
+  border-radius: var(--radius-xs);
+  padding: 6px;
+  border: 1px solid var(--border);
+}
+
+/* Chem Gauges */
+.chem-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chem-gauge-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 8px 10px;
+}
+
+.chem-gauge-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.chem-el-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.chem-el-val {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.chem-meter-track {
+  height: 8px;
+  background: #0a0e14;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.chem-meter-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(16, 185, 129, 0.25);
+  border-left: 1px solid var(--ok);
+  border-right: 1px solid var(--ok);
+}
+
+.chem-meter-needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #fff;
+  z-index: 2;
+  transition: left 0.3s ease;
+}
+
+.chem-meter-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chem-verdict {
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.chem-verdict.ok { color: var(--ok); }
+.chem-verdict.bad { color: var(--crit); }
+
+.sh-explanation-card {
+  margin-top: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cyan);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+}
+
+.exp-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: var(--cyan-light);
+  margin-bottom: 4px;
+}
+
+.exp-text {
+  font-size: 11.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Справка (Help / Doc)
+   ========================================================================== */
+.cycle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.cycle-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 12px;
+  position: relative;
+}
+
+.cycle-num {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--accent);
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cycle-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.cycle-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.cycle-meta {
+  margin-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--cyan-light);
+}
+
+.glossary {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.g-item {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 14px;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.g-item:last-child {
+  border-bottom: none;
+}
+
+.g-item b {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.g-item span {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.g-item.hidden {
+  display: none;
+}
+
+/* Тултипы */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 105%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #151c27;
+  border: 1px solid var(--border-light);
+  color: #e2e8f0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: normal;
+  width: max-content;
+  max-width: 250px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 1000;
+}
