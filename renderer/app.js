@@ -74,22 +74,6 @@ function setup3DControls() {
   btnReset?.addEventListener('click', () => {
     furnace3D.resetCamera();
   });
-
-  // Переключение режимов 3D / График / Сплит
-  document.querySelectorAll('.mode-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const mode = tab.dataset.mode;
-      const viewport = document.getElementById('visViewport');
-      viewport.className = `vis-viewport mode-${mode}`;
-
-      setTimeout(() => {
-        if (furnace3D) furnace3D.resize();
-        if (liveChart) liveChart.resize();
-      }, 50);
-    });
-  });
 }
 
 // ==========================================================================
@@ -117,13 +101,13 @@ function switchView(viewName) {
   if (viewTarget) viewTarget.classList.add('active');
 
   const titles = {
-    dashboard: ['Мониторинг плавки', 'Оперативная телеметрия параметров электродуговой печи в реальном времени'],
-    melts: ['Журнал плавок', 'База технологических паспортов выплавки стали на агрегате ДСП-135'],
-    alerts: ['Журнал событий', 'Автоматическая регистрация сигналов предупредительной и аварийной сигнализации'],
-    shihta: ['Расчёт металлошихты', 'Оптимизация дозировки сырья, баланс углерода и расчёт потребности в кислороде'],
-    materials: ['Справочники', 'Технологический состав сырья, заводские цены и требования марок стали'],
-    plc: ['Подключение ПЛК и шлюз АСУ ТП', 'Интеграция с контроллерами печей (OPC UA / Modbus TCP / MQTT) и локальный HTTP REST-шлюз 4580'],
-    help: ['Документация', 'Технологический регламент ДСП-135, глоссарий и архитектура системы']
+    dashboard: ['Мониторинг плавки', 'Контроль агрегатов ДСП-135 №1–4'],
+    melts: ['Журнал плавок', 'Технологические паспорта выплавки стали'],
+    alerts: ['Журнал событий', 'Регистрация технологических отклонений и сигнализации'],
+    shihta: ['Расчёт шихты', 'Дозировка сырья, баланс углерода и кислорода'],
+    materials: ['Справочники', 'Состав шихтовых материалов и требования марок стали'],
+    plc: ['Подключение ПЛК', 'Конфигурация каналов связи АСУ ТП (OPC UA / Modbus TCP / HTTP)'],
+    help: ['Документация', 'Технологический регламент ДСП-135 и глоссарий']
   };
 
   if (titles[viewName]) {
@@ -134,7 +118,6 @@ function switchView(viewName) {
   if (viewName === 'dashboard') {
     setTimeout(() => {
       if (furnace3D) furnace3D.resize();
-      if (liveChart) liveChart.resize();
     }, 60);
   } else if (viewName === 'plc') {
     refreshPlcStatusOnly(true);
@@ -184,38 +167,26 @@ function renderFurnaceFleet(actives) {
     const fNo = m.furnace_no || 1;
     const isSel = fNo === selectedFurnaceNo;
     const pct = Math.min(100, Math.max(0, ((m.t_min || 0) / (m.duration_min || 65)) * 100));
-    const stName = (m.stage || stageName(m.t_min || 0, m.duration_min || 65)).toUpperCase();
-
-    let srcClass = 'model';
-    let srcLabel = 'МОДЕЛЬ';
-    if (m.plc_source === 'PLC_LIVE') {
-      srcClass = 'plc-live';
-      srcLabel = `ПЛК · ${m.plc_protocol || 'LIVE'}`;
-    } else if (m.plc_source === 'WAITING_PLC') {
-      srcClass = 'waiting';
-      srcLabel = 'ОЖИД. ПЛК';
-    }
+    const stName = m.stage || stageName(m.t_min || 0, m.duration_min || 65);
+    const plcBadge = m.plc_source === 'PLC_LIVE'
+      ? `<span class="fleet-src-badge plc-live">ПЛК</span>`
+      : '';
 
     return `
-      <div class="fleet-card ${isSel ? 'active' : ''}" data-furnace="${fNo}" title="Переключить 3D-двойник и телеметрию на ДСП-135 №${fNo}">
+      <div class="fleet-card ${isSel ? 'active' : ''}" data-furnace="${fNo}">
         <div class="fleet-top">
           <span class="fleet-unit-name">
             <span class="fleet-dot"></span>
             ДСП-135 №${fNo}
           </span>
           <span class="fleet-tags-right">
-            <span class="fleet-src-badge ${srcClass}">${srcLabel}</span>
+            ${plcBadge}
             <span class="fleet-grade">${m.steel_grade}</span>
           </span>
         </div>
-        <div class="fleet-mid">
-          <span class="fleet-melt-num">${m.num}</span>
-          <span class="fleet-stage-tag">${stName} · ${pct.toFixed(0)}%</span>
-        </div>
         <div class="fleet-metrics">
-          <span>Т ванны: <b>${m.temp_c ?? 25} °C</b></span>
-          <span>Дуга: <b>${m.power_mw ?? 0} МВт</b></span>
-          <span><b>${(m.t_min || 0).toFixed(1)}</b>/${m.duration_min}м</span>
+          <span class="fleet-stage-tag">${stName}</span>
+          <span><b>${m.temp_c ?? 25} °C</b> · <b>${m.power_mw ?? 0} МВт</b></span>
         </div>
         <div class="fleet-bar-track">
           <div class="fleet-bar-fill" style="width: ${pct.toFixed(1)}%"></div>
@@ -239,15 +210,16 @@ function renderFurnaceFleet(actives) {
 
 function updateMeltTitles(melt) {
   const fNo = melt.furnace_no || selectedFurnaceNo;
-  document.getElementById('liveMeltNum').textContent = `ДСП №${fNo} · ПЛАВКА ${melt.num}`;
+  document.getElementById('liveMeltNum').textContent = `ДСП-135 №${fNo}`;
   document.getElementById('stepperMeltNum').textContent = melt.num;
   const stepperTitle = document.getElementById('stepperFurnaceTitle');
   if (stepperTitle) {
-    stepperTitle.textContent = `ТЕХНОЛОГИЧЕСКИЙ ЦИКЛ ПЛАВКИ · ДСП-135 №${fNo} (${melt.steel_grade})`;
+    stepperTitle.textContent = `Цикл плавки · ДСП №${fNo} (${melt.steel_grade})`;
   }
-  document.getElementById('topbarHeatText').textContent = `ЦЕХ ЭСПЦ · В РАБОТЕ 4 ПЕЧИ (АКТИВНА ДСП №${fNo} · ${melt.steel_grade})`;
-  document.getElementById('liveMeltInfo').textContent =
-    `Агрегат ДСП-135 №${fNo} · Марка ${melt.steel_grade} · Масса ${melt.mass_t} т · Сталевар ${melt.operator}`;
+  const infoEl = document.getElementById('liveMeltInfo');
+  if (infoEl) {
+    infoEl.textContent = `Плавка ${melt.num} · ${melt.steel_grade} · ${melt.mass_t} т`;
+  }
 }
 
 function setupStagePreviewClicks() {
@@ -278,7 +250,7 @@ function setupStagePreviewClicks() {
       if (furnace3D) {
         furnace3D.update(preset);
       }
-      document.getElementById('liveStage').textContent = `${st.toUpperCase()} (ОСМОТР)`;
+      document.getElementById('liveStage').textContent = `${st} (осмотр)`;
 
       if (previewTimeout) clearTimeout(previewTimeout);
       previewTimeout = setTimeout(() => {
@@ -296,7 +268,6 @@ async function tickLive(advanceSimulation = true) {
   const sum = await call('summary', { furnace_no: selectedFurnaceNo });
   if (!sum || !sum.active) return;
 
-  // Обновляем сводную панель всех 4 параллельных печей
   if (sum.actives) {
     renderFurnaceFleet(sum.actives);
   }
@@ -304,13 +275,11 @@ async function tickLive(advanceSimulation = true) {
     syncGlobalPlcBadges(sum.plc);
   }
 
-  // Обновляем KPI плашки в реальном времени
   document.getElementById('kpiToday').textContent = sum.meltsToday;
   document.getElementById('kpiMonth').textContent = sum.meltsMonth;
   document.getElementById('kpiEnergy').textContent = fmtNum(sum.avgEnergyPerT);
   document.getElementById('kpiDuration').textContent = sum.avgDuration;
 
-  // Если на любой из 4 печей завершилась плавка и открылась новая — обновляем журналы
   const sig = (sum.actives || []).map(a => a.id).join(',');
   if (lastActiveIdsSignature && lastActiveIdsSignature !== sig) {
     loadMelts();
@@ -328,7 +297,7 @@ async function tickLive(advanceSimulation = true) {
 
   const currentStage = stageName(last.t_min, melt.duration_min);
   if (!previewStageOverride) {
-    document.getElementById('liveStage').textContent = currentStage.toUpperCase();
+    document.getElementById('liveStage').textContent = currentStage;
   }
 
   const progressPct = Math.min(100, Math.max(0, (last.t_min / melt.duration_min) * 100));
@@ -336,7 +305,7 @@ async function tickLive(advanceSimulation = true) {
   // 1. Степпер
   updateStageStepper(last.t_min, melt.duration_min, currentStage, progressPct);
 
-  // 2. Датчики
+  // 2. Параметры печи
   document.getElementById('paramTemp').textContent = `${last.temp_c} °C`;
   document.getElementById('meterTempFill').style.width = `${Math.min(100, (last.temp_c / 1800) * 100)}%`;
 
@@ -349,26 +318,7 @@ async function tickLive(advanceSimulation = true) {
   document.getElementById('paramGrade').textContent = melt.steel_grade;
   document.getElementById('paramOperator').textContent = melt.operator;
 
-  // 3. HUD над 3D
-  document.getElementById('hudTemp').textContent = `${last.temp_c} °C`;
-  document.getElementById('hudPower').textContent = `${last.power_mw} МВт`;
-
-  const effectiveStage = previewStageOverride || currentStage;
-  const arcBadge = document.getElementById('hudArcBadge');
-  const arcText = document.getElementById('hudArcText');
-  const isArcOn = previewStageOverride
-    ? (effectiveStage === 'Плавление' || effectiveStage === 'Доводка')
-    : (last.power_mw > 1 && (currentStage === 'Плавление' || currentStage === 'Доводка'));
-
-  if (isArcOn) {
-    arcBadge.classList.add('active');
-    arcText.textContent = previewStageOverride ? `ДУГА: АКТИВНА` : `ДУГА: ${last.power_mw} МВт`;
-  } else {
-    arcBadge.classList.remove('active');
-    arcText.textContent = 'ДУГА: ВЫКЛ';
-  }
-
-  // 4. Синхронизация 3D (если пользователь не включил ручной осмотр стадии)
+  // 3. Синхронизация 3D
   if (furnace3D && !previewStageOverride) {
     furnace3D.update({
       temp_c: last.temp_c,
@@ -379,25 +329,22 @@ async function tickLive(advanceSimulation = true) {
     });
   }
 
-  // 5. График
-  updateLiveChart(points);
-
-  // 6. Последние события выбранной печи
-  const alerts = detail.alerts.slice(-5).reverse();
+  // 4. Последние события выбранной печи
+  const alerts = detail.alerts.slice(-3).reverse();
   document.getElementById('liveAlerts').innerHTML = alerts.length
     ? alerts.map(a => `<div class="mini-alert ${a.level}">
         <b>${a.message}</b>
-        <span class="when">на ${a.t_min ?? '—'} мин плавки</span>
+        <span class="when">${a.t_min ?? '—'} мин</span>
       </div>`).join('')
-    : `<div class="mini-alert info">ДСП-135 №${melt.furnace_no || selectedFurnaceNo}: отклонений не зафиксировано · Режим штатный</div>`;
+    : `<div class="mini-alert info">ДСП-135 №${melt.furnace_no || selectedFurnaceNo}: режим штатный</div>`;
 }
 
 function updateStageStepper(t_min, duration_min, currentStage, progressPct) {
-  document.getElementById('stepperFill').style.width = `${progressPct.toFixed(1)}%`;
+  const fillEl = document.getElementById('stepperFill');
+  if (fillEl) fillEl.style.width = `${progressPct.toFixed(1)}%`;
   document.getElementById('stepperTime').textContent = `${t_min.toFixed(1)} / ${duration_min} мин`;
   document.getElementById('stepperPercent').textContent = `${progressPct.toFixed(0)}%`;
 
-  // Нормативные границы стадий в долях от длительности цикла (0..8..38..58..65)
   const bounds = [0, 8 / 65, 38 / 65, 58 / 65, 1.0];
   const normProgress = Math.min(1, Math.max(0, t_min / (duration_min || 65)));
 
@@ -418,86 +365,16 @@ function updateStageStepper(t_min, duration_min, currentStage, progressPct) {
     if (idx < curIdx) {
       el.classList.add('completed');
       if (barEl) barEl.style.width = '100%';
-      if (stateEl) stateEl.textContent = 'ВЫПОЛНЕНО';
+      if (stateEl) stateEl.textContent = 'Готово';
     } else if (idx === curIdx) {
       el.classList.add('active');
       if (barEl) barEl.style.width = `${stagePct.toFixed(0)}%`;
-      if (stateEl) stateEl.textContent = `В РАБОТЕ · ${stagePct.toFixed(0)}%`;
+      if (stateEl) stateEl.textContent = `${stagePct.toFixed(0)}%`;
     } else {
       if (barEl) barEl.style.width = '0%';
-      if (stateEl) stateEl.textContent = 'ОЖИДАНИЕ';
+      if (stateEl) stateEl.textContent = '—';
     }
   });
-}
-
-function updateLiveChart(points) {
-  const labels = points.map(p => p.t_min);
-  const tempData = points.map(p => p.temp_c);
-  const powerData = points.map(p => p.power_mw);
-
-  if (!liveChart) {
-    const ctx = document.getElementById('liveChart').getContext('2d');
-    liveChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Температура расплава, °C',
-            data: tempData,
-            borderColor: '#ea580c',
-            backgroundColor: 'rgba(234, 88, 12, 0.08)',
-            fill: true,
-            tension: 0.35,
-            pointRadius: 0,
-            yAxisID: 'y'
-          },
-          {
-            label: 'Мощность дуги, МВт',
-            data: powerData,
-            borderColor: '#0284c7',
-            tension: 0.35,
-            pointRadius: 0,
-            yAxisID: 'y1'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: {
-            labels: { color: '#7c8d9f', font: { size: 11, weight: '600' } }
-          }
-        },
-        scales: {
-          x: {
-            title: { display: true, text: 'Минуты плавки', color: '#7c8d9f', font: { size: 10 } },
-            ticks: { color: '#7c8d9f', font: { size: 10 } },
-            grid: { color: '#1e2938' }
-          },
-          y: {
-            title: { display: true, text: 'Температура, °C', color: '#ea580c', font: { size: 10 } },
-            ticks: { color: '#ea580c', font: { size: 10 } },
-            grid: { color: '#1e2938' }
-          },
-          y1: {
-            position: 'right',
-            title: { display: true, text: 'Мощность, МВт', color: '#0284c7', font: { size: 10 } },
-            ticks: { color: '#0284c7', font: { size: 10 } },
-            grid: { drawOnChartArea: false }
-          }
-        }
-      }
-    });
-  } else {
-    liveChart.data.labels = labels;
-    liveChart.data.datasets[0].data = tempData;
-    liveChart.data.datasets[1].data = powerData;
-    liveChart.update('none');
-  }
 }
 
 // ==========================================================================
@@ -659,8 +536,8 @@ async function showMeltDetail(id) {
         {
           label: 'Температура металла, °C',
           data: points.map(p => p.temp_c),
-          borderColor: '#ea580c',
-          backgroundColor: 'rgba(234, 88, 12, 0.08)',
+          borderColor: '#c87a28',
+          backgroundColor: 'rgba(200, 122, 40, 0.08)',
           fill: true,
           tension: 0.35,
           pointRadius: 0,
@@ -669,7 +546,7 @@ async function showMeltDetail(id) {
         {
           label: 'Мощность, МВт',
           data: points.map(p => p.power_mw),
-          borderColor: '#0284c7',
+          borderColor: '#6b8ba8',
           tension: 0.35,
           pointRadius: 0,
           yAxisID: 'y1'
@@ -681,21 +558,21 @@ async function showMeltDetail(id) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: '#7c8d9f', font: { size: 11, weight: '600' } } }
+        legend: { labels: { color: '#94989e', font: { size: 11, weight: '600' } } }
       },
       scales: {
         x: {
-          title: { display: true, text: 'мин от завалки', color: '#7c8d9f' },
-          ticks: { color: '#7c8d9f' },
-          grid: { color: '#1e2938' }
+          title: { display: true, text: 'мин от завалки', color: '#94989e' },
+          ticks: { color: '#94989e' },
+          grid: { color: '#2c2f35' }
         },
         y: {
-          ticks: { color: '#ea580c' },
-          grid: { color: '#1e2938' }
+          ticks: { color: '#c87a28' },
+          grid: { color: '#2c2f35' }
         },
         y1: {
           position: 'right',
-          ticks: { color: '#0284c7' },
+          ticks: { color: '#6b8ba8' },
           grid: { drawOnChartArea: false }
         }
       }
@@ -825,12 +702,12 @@ function renderShihtaChart(rows) {
   const data = rows.map(r => r.mass);
 
   const colors = [
-    '#0284c7', // Металлолом
-    '#ea580c', // Чугун
-    '#64748b', // Известь
-    '#7c3aed', // ФС45
-    '#db2777', // ФМн78
-    '#d97706'  // Кокс
+    '#5e7a94', // Металлолом
+    '#c87a28', // Чугун
+    '#747b84', // Известь
+    '#4d8a63', // ФС45
+    '#9a6b4c', // ФМн78
+    '#8c7a52'  // Кокс
   ];
 
   if (shPieChart) shPieChart.destroy();
@@ -843,7 +720,7 @@ function renderShihtaChart(rows) {
         data,
         backgroundColor: colors.slice(0, rows.length),
         borderWidth: 1,
-        borderColor: '#111722'
+        borderColor: '#212327'
       }]
     },
     options: {
@@ -852,7 +729,7 @@ function renderShihtaChart(rows) {
       plugins: {
         legend: {
           position: 'right',
-          labels: { color: '#7c8d9f', boxWidth: 10, font: { size: 10, weight: '600' } }
+          labels: { color: '#94989e', boxWidth: 10, font: { size: 10, weight: '600' } }
         }
       },
       cutout: '60%'

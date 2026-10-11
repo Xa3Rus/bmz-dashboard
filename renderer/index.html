@@ -8,7 +8,7 @@
 </head>
 <body>
   <div class="app">
-    <!-- Боковая панель оператора (Industrial SCADA Navigation) -->
+    <!-- Боковая панель навигации -->
     <aside class="sidebar">
       <div class="logo">
         <div class="logo-mark">
@@ -16,7 +16,7 @@
         </div>
         <div class="logo-text">
           <div class="logo-title">ЦИФРОВАЯ ПЛАВКА</div>
-          <div class="logo-sub">АРМ ОПЕРАТОРА ДСП-135</div>
+          <div class="logo-sub">ЭСПЦ-2 · ДСП-135</div>
         </div>
       </div>
 
@@ -27,7 +27,6 @@
             <path d="M12 2.25A8.004 8.004 0 0117.75 8H12V2.25z"/>
           </svg>
           <span class="nav-title">Мониторинг</span>
-          <span class="nav-chip live-chip">ОНЛАЙН</span>
         </button>
 
         <button class="nav-btn" data-view="melts">
@@ -43,7 +42,7 @@
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
           </svg>
           <span class="nav-title">Журнал событий</span>
-          <span class="nav-chip alert-chip" id="navAlertsCount">0</span>
+          <span class="nav-chip" id="navAlertsCount">0</span>
         </button>
 
         <button class="nav-btn" data-view="shihta">
@@ -65,7 +64,6 @@
             <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm14 1a1 1 0 11-2 0 1 1 0 012 0zM2 13a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2zm14 1a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd"/>
           </svg>
           <span class="nav-title">Подключение ПЛК</span>
-          <span class="nav-chip" id="navPlcBadge">ГИБРИД</span>
         </button>
 
         <button class="nav-btn" data-view="help">
@@ -79,29 +77,30 @@
       <div class="sidebar-footer">
         <div class="db-status">
           <span class="status-dot ok" id="connDot"></span>
-          <span id="connState">ШЛЮЗ АСУ ТП: 4580 OK</span>
+          <span id="connState">ШЛЮЗ АСУ ТП: 4580</span>
         </div>
-        <div class="sys-info">АСУ ТП ЭСПЦ · ОУАиБД</div>
+        <div class="sys-info">ОАО «БМЗ» · ЭСПЦ-2</div>
       </div>
     </aside>
 
     <!-- Основная рабочая область -->
     <main class="main-content">
-      <!-- Верхняя панель телеметрии (Header) -->
+      <!-- Верхняя панель -->
       <header class="topbar">
         <div class="topbar-left">
           <h1 id="viewTitle">Мониторинг плавки</h1>
-          <div class="view-sub" id="viewSub">Оперативная телеметрия параметров электродуговой печи в реальном времени</div>
+          <span class="view-sub" id="viewSub">Контроль агрегатов ДСП-135 №1–4</span>
         </div>
 
         <div class="topbar-right">
-          <div class="heat-chip" id="topbarHeatChip">
-            <span class="pulse-indicator"></span>
-            <span class="heat-chip-text" id="topbarHeatText">ДСП-135 · ПЛАВКА В РАБОТЕ</span>
-          </div>
-          <div class="shift-chip">
-            <span class="chip-label">СМЕНА</span>
-            <span>Б (19:00–07:00)</span>
+          <div class="topbar-kpis">
+            <span>Сутки: <b id="kpiToday">—</b> пл.</span>
+            <span class="sep">·</span>
+            <span>30 дн: <b id="kpiMonth">—</b> пл.</span>
+            <span class="sep">·</span>
+            <span>Расход: <b id="kpiEnergy">—</b> кВт·ч/т</span>
+            <span class="sep">·</span>
+            <span>Цикл: <b id="kpiDuration">—</b> мин</span>
           </div>
           <div class="clock-chip">
             <span id="clock" class="clock">--:--:--</span>
@@ -113,238 +112,111 @@
            1. Вкладка: Мониторинг плавки
            ==================================================================== -->
       <section id="view-dashboard" class="view active">
-        <!-- Сводная панель 4 параллельно работающих печей цеха ЭСПЦ -->
-        <div class="furnace-fleet-bar" id="furnaceFleetBar">
-          <!-- Заполняется динамически 4 карточками ДСП №1..4 -->
-        </div>
+        <!-- Компактная панель переключения 4 печей цеха -->
+        <div class="furnace-fleet-bar" id="furnaceFleetBar"></div>
 
-        <!-- Трекер стадий плавки выбранной печи -->
+        <!-- Компактная шкала этапов выбранной печи -->
         <div class="stage-stepper-panel panel">
           <div class="stepper-header">
             <div class="stepper-title">
-              <span class="stepper-label" id="stepperFurnaceTitle">ТЕХНОЛОГИЧЕСКИЙ ЦИКЛ ПЛАВКИ · ДСП-135 №1</span>
+              <span class="stepper-label" id="stepperFurnaceTitle">ДСП-135 №1</span>
               <span class="stepper-melt-tag" id="stepperMeltNum">ПЛ-0000-000</span>
             </div>
             <div class="stepper-time">
-              <span>Хронометраж цикла: </span>
-              <b id="stepperTime">0.0 / 65 мин</b>
+              <span id="stepperTime">0.0 / 65 мин</span>
               <span class="stepper-percent" id="stepperPercent">0%</span>
             </div>
           </div>
 
-          <!-- Общая непрерывная шкала прогресса всей плавки -->
-          <div class="cycle-master-bar" title="Общий прогресс текущего технологического цикла">
-            <div class="cycle-master-fill" id="stepperFill" style="width: 0%"></div>
-          </div>
+          <div class="cycle-master-bar" style="display:none"><div class="cycle-master-fill" id="stepperFill"></div></div>
 
-          <!-- Карточки 4 технологических стадий с индивидуальным прогрессом и быстрым предпросмотром 3D -->
           <div class="stepper-track">
-            <div class="step-node" data-stage="Завалка" id="step-0" title="Нажмите для предпросмотра стадии в 3D">
-              <div class="step-top">
-                <div class="step-dot">1</div>
-                <div class="step-info">
-                  <div class="step-name-row">
-                    <span class="step-name">ЗАВАЛКА</span>
-                    <span class="step-state" id="stepState-0">ОЖИДАНИЕ</span>
-                  </div>
-                  <span class="step-range">0–8 мин · Загрузка корзины шихты</span>
-                </div>
+            <div class="step-node" data-stage="Завалка" id="step-0" title="Предпросмотр стадии в 3D">
+              <div class="step-name-row">
+                <span class="step-name">1. Завалка</span>
+                <span class="step-state" id="stepState-0">Ожидание</span>
               </div>
               <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-0"></div></div>
             </div>
 
-            <div class="step-node" data-stage="Плавление" id="step-1" title="Нажмите для предпросмотра стадии в 3D">
-              <div class="step-top">
-                <div class="step-dot">2</div>
-                <div class="step-info">
-                  <div class="step-name-row">
-                    <span class="step-name">ПЛАВЛЕНИЕ</span>
-                    <span class="step-state" id="stepState-1">ОЖИДАНИЕ</span>
-                  </div>
-                  <span class="step-range">8–38 мин · Работа дуги 42–45 МВт</span>
-                </div>
+            <div class="step-node" data-stage="Плавление" id="step-1" title="Предпросмотр стадии в 3D">
+              <div class="step-name-row">
+                <span class="step-name">2. Плавление</span>
+                <span class="step-state" id="stepState-1">Ожидание</span>
               </div>
               <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-1"></div></div>
             </div>
 
-            <div class="step-node" data-stage="Доводка" id="step-2" title="Нажмите для предпросмотра стадии в 3D">
-              <div class="step-top">
-                <div class="step-dot">3</div>
-                <div class="step-info">
-                  <div class="step-name-row">
-                    <span class="step-name">ДОВОДКА</span>
-                    <span class="step-state" id="stepState-2">ОЖИДАНИЕ</span>
-                  </div>
-                  <span class="step-range">38–58 мин · Продувка O₂ и легирование</span>
-                </div>
+            <div class="step-node" data-stage="Доводка" id="step-2" title="Предпросмотр стадии в 3D">
+              <div class="step-name-row">
+                <span class="step-name">3. Доводка</span>
+                <span class="step-state" id="stepState-2">Ожидание</span>
               </div>
               <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-2"></div></div>
             </div>
 
-            <div class="step-node" data-stage="Выпуск" id="step-3" title="Нажмите для предпросмотра стадии в 3D">
-              <div class="step-top">
-                <div class="step-dot">4</div>
-                <div class="step-info">
-                  <div class="step-name-row">
-                    <span class="step-name">ВЫПУСК</span>
-                    <span class="step-state" id="stepState-3">ОЖИДАНИЕ</span>
-                  </div>
-                  <span class="step-range">58–65 мин · Слив стали через EBT в ковш</span>
-                </div>
+            <div class="step-node" data-stage="Выпуск" id="step-3" title="Предпросмотр стадии в 3D">
+              <div class="step-name-row">
+                <span class="step-name">4. Выпуск</span>
+                <span class="step-state" id="stepState-3">Ожидание</span>
               </div>
               <div class="step-bar-track"><div class="step-bar-fill" id="stepBar-3"></div></div>
             </div>
           </div>
         </div>
 
-        <!-- Ключевые показатели (KPI) -->
-        <div class="kpis">
-          <div class="kpi-card" data-tooltip="Количество завершённых плавок за текущие календарные сутки (целевой норматив: 18 плавок)">
-            <div class="kpi-content">
-              <div class="kpi-label">СУТОЧНЫЙ ВЫПУСК</div>
-              <div class="kpi-value-row">
-                <span class="kpi-value" id="kpiToday">—</span>
-                <span class="kpi-unit">плавок</span>
-                <span class="kpi-trend ok">+2 К ПЛАНУ</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="kpi-card" data-tooltip="Суммарный выпуск стали цеха ЭСПЦ за расчётные 30 суток">
-            <div class="kpi-content">
-              <div class="kpi-label">МЕСЯЧНЫЙ ИТОГ</div>
-              <div class="kpi-value-row">
-                <span class="kpi-value" id="kpiMonth">—</span>
-                <span class="kpi-unit">плавок</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="kpi-card" data-tooltip="Удельный расход электроэнергии на тонну жидкой стали (технологическая норма ДСП-135: 380–420 кВт·ч/т)">
-            <div class="kpi-content">
-              <div class="kpi-label">УДЕЛЬНЫЙ РАСХОД</div>
-              <div class="kpi-value-row">
-                <span class="kpi-value" id="kpiEnergy">—</span>
-                <span class="kpi-unit">кВт·ч/т</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="kpi-card" data-tooltip="Средняя длительность плавки от начала первой корзины до выпуска стали в ковш (норма: 60–65 мин)">
-            <div class="kpi-content">
-              <div class="kpi-label">СРЕДНЕЕ ВРЕМЯ ЦИКЛА</div>
-              <div class="kpi-value-row">
-                <span class="kpi-value" id="kpiDuration">—</span>
-                <span class="kpi-unit">мин</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Главная рабочая панель: 3D модель и Телеметрия -->
+        <!-- Рабочая область: Чистое 3D-окно агрегата и Панель параметров -->
         <div class="dash-grid">
-          <!-- Левая панель: 3D Визуализация и Графики -->
+          <!-- Левая панель: 3D модель печи без графиков и лишних плашек -->
           <div class="panel main-vis-panel">
-            <div class="panel-head">
-              <div class="vis-titles">
-                <div class="panel-title-row">
-                  <span class="panel-title" id="liveMeltNum">ПЛАВКА —</span>
-                  <span id="liveStage" class="stage-badge">ЗАВАЛКА</span>
-                </div>
-                <div class="panel-sub" id="liveMeltInfo">Инициализация параметров...</div>
+            <div class="panel-head vis-toolbar-head">
+              <div class="panel-title-row">
+                <span class="panel-title" id="liveMeltNum">ДСП №1</span>
+                <span id="liveStage" class="stage-badge">ЗАВАЛКА</span>
+                <span class="panel-sub-inline" id="liveMeltInfo"></span>
               </div>
 
-              <!-- Селектор режимов отображения -->
-              <div class="vis-mode-switch">
-                <button class="mode-tab active" data-mode="3d">3D ДВОЙНИК</button>
-                <button class="mode-tab" data-mode="split">3D + ГРАФИК</button>
-                <button class="mode-tab" data-mode="chart">ГРАФИК</button>
+              <div class="hud-controls">
+                <button class="hud-btn active" id="btnCutaway">Разрез</button>
+                <button class="hud-btn" id="btnShell">Корпус</button>
+                <button class="hud-btn" id="btnThermal">Термокарта</button>
+                <button class="hud-btn" id="btnWireframe">Каркас</button>
+                <button class="hud-btn" id="btnRotate">Вращение</button>
+                <button class="hud-btn" id="btnResetCam">Сброс</button>
               </div>
             </div>
 
             <div class="vis-viewport" id="visViewport">
-              <!-- 3D Контейнер -->
               <div class="furnace3d-wrap" id="furnace3dWrap">
                 <div id="furnace3dContainer" class="furnace3d-canvas"></div>
-
-                <!-- Строгий инженерный HUD оверлей (CAD / SCADA Style) -->
-                <div class="hud-overlay">
-                  <div class="hud-badges">
-                    <div class="hud-badge">
-                      <span class="hud-badge-label">ТЕМПЕРАТУРА ВАННЫ</span>
-                      <span class="hud-badge-val" id="hudTemp">-- °C</span>
-                    </div>
-                    <div class="hud-badge">
-                      <span class="hud-badge-label">МОЩНОСТЬ ДУГИ</span>
-                      <span class="hud-badge-val" id="hudPower">-- МВт</span>
-                    </div>
-                    <div class="hud-badge arc-badge" id="hudArcBadge">
-                      <span class="arc-dot"></span>
-                      <span id="hudArcText">ДУГА: ВЫКЛ</span>
-                    </div>
-                  </div>
-
-                  <div class="hud-controls">
-                    <button class="hud-btn active" id="btnCutaway">РАЗРЕЗ</button>
-                    <button class="hud-btn" id="btnShell">КОРПУС</button>
-                    <button class="hud-btn" id="btnThermal">ТЕРМОКАРТА</button>
-                    <button class="hud-btn" id="btnWireframe">КАРКАС</button>
-                    <button class="hud-btn" id="btnRotate">ВРАЩЕНИЕ</button>
-                    <button class="hud-btn" id="btnResetCam">СБРОС ВИДА</button>
-                  </div>
-
-                  <div class="hud-hint">
-                    <span>ЛКМ: ВРАЩЕНИЕ · КОЛЕСО: ЗУМ · ПКМ: СДВИГ</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- График Chart.js -->
-              <div class="chart-wrap" id="liveChartWrap">
-                <canvas id="liveChart"></canvas>
               </div>
             </div>
           </div>
 
-          <!-- Правая колонка: Инженерные датчики и Алерты -->
+          <!-- Правая колонка: Текущие параметры печи и события -->
           <div class="side-column">
-            <div class="panel">
-              <div class="panel-title-row">
-                <div class="panel-title">ПАРАМЕТРЫ ПЕЧИ</div>
-                <span class="live-pill">ТЕЛЕМЕТРИЯ</span>
-              </div>
+            <div class="panel side-params-panel">
+              <div class="panel-title" style="margin-bottom: 10px;">ПАРАМЕТРЫ АГРЕГАТА</div>
 
               <div class="gauge-cards">
-                <!-- Датчик температуры расплава -->
                 <div class="gauge-card">
                   <div class="gauge-header">
-                    <span class="gauge-name">ТЕМПЕРАТУРА РАСПЛАВА</span>
+                    <span class="gauge-name">Температура ванны</span>
                     <span class="gauge-val" id="paramTemp">-- °C</span>
                   </div>
                   <div class="gauge-meter-track">
                     <div class="gauge-meter-fill temp-fill" id="meterTempFill" style="width: 20%"></div>
-                    <div class="gauge-limit-marker" style="left: 92%" title="Уставка: 1660 °C"></div>
-                  </div>
-                  <div class="gauge-footer">
-                    <span>0 °C</span>
-                    <span class="crit-marker">УСТАВКА: 1660 °C</span>
-                    <span>1800 °C</span>
+                    <div class="gauge-limit-marker" style="left: 92%" title="Предел: 1660 °C"></div>
                   </div>
                 </div>
 
-                <!-- Датчик мощности дуги -->
                 <div class="gauge-card">
                   <div class="gauge-header">
-                    <span class="gauge-name">АКТИВНАЯ МОЩНОСТЬ</span>
+                    <span class="gauge-name">Активная мощность дуги</span>
                     <span class="gauge-val" id="paramPower">-- МВт</span>
                   </div>
                   <div class="gauge-meter-track">
                     <div class="gauge-meter-fill power-fill" id="meterPowerFill" style="width: 0%"></div>
-                  </div>
-                  <div class="gauge-footer">
-                    <span>0 МВт</span>
-                    <span>НОМИНАЛ: 45 МВт</span>
-                    <span>55 МВт</span>
                   </div>
                 </div>
               </div>
@@ -355,32 +227,31 @@
                   <span class="p-val" id="paramTime">0.0 / 65 мин</span>
                 </div>
                 <div class="param-row">
-                  <span class="p-label">Расход электроэнергии</span>
+                  <span class="p-label">Расход энергии</span>
                   <span class="p-val" id="paramEnergy">0 кВт·ч</span>
                 </div>
                 <div class="param-row">
-                  <span class="p-label">Масса загрузки</span>
+                  <span class="p-label">Масса плавки</span>
                   <span class="p-val" id="paramMass">-- т</span>
                 </div>
                 <div class="param-row">
                   <span class="p-label">Марка стали</span>
-                  <span class="p-val tag-grade" id="paramGrade">--</span>
+                  <span class="p-val" id="paramGrade">--</span>
                 </div>
                 <div class="param-row">
-                  <span class="p-label">Ответственный сталевар</span>
+                  <span class="p-label">Сталевар</span>
                   <span class="p-val" id="paramOperator">--</span>
                 </div>
               </div>
-            </div>
 
-            <!-- Последние события -->
-            <div class="panel">
-              <div class="panel-head" style="margin-bottom: 8px;">
-                <div class="panel-title">СОБЫТИЯ ПЛАВКИ</div>
-                <button class="link-btn" id="btnGoAlerts">В ЖУРНАЛ ➔</button>
-              </div>
-              <div id="liveAlerts" class="mini-alerts">
-                <div class="mini-alert info">Технологических отклонений не зафиксировано</div>
+              <div class="side-alerts-block">
+                <div class="panel-head" style="margin: 14px 0 6px;">
+                  <div class="panel-title">СОБЫТИЯ ПЕЧИ</div>
+                  <button class="link-btn" id="btnGoAlerts">Журнал ➔</button>
+                </div>
+                <div id="liveAlerts" class="mini-alerts">
+                  <div class="mini-alert info">Режим работы штатный</div>
+                </div>
               </div>
             </div>
           </div>

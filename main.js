@@ -8,7 +8,7 @@ function createWindow() {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    backgroundColor: '#0e1319',
+    backgroundColor: '#161719',
     autoHideMenuBar: true,
     title: 'Цифровая плавка — БМЗ',
     webPreferences: {

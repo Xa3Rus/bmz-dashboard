@@ -62,8 +62,8 @@ export class Furnace3D {
     const height = this.container.clientHeight || 520;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x090d13);
-    this.scene.fog = new THREE.FogExp2(0x090d13, 0.018);
+    this.scene.background = new THREE.Color(0x181a1d);
+    this.scene.fog = new THREE.FogExp2(0x181a1d, 0.015);
 
     this.camera = new THREE.PerspectiveCamera(36, width / height, 0.2, 140);
     this.updateCameraPos();
@@ -78,17 +78,17 @@ export class Furnace3D {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.45;
+    this.renderer.toneMappingExposure = 1.35;
 
     this.container.innerHTML = '';
     this.container.appendChild(this.renderer.domElement);
 
-    // Трехточечное студийно-цеховое освещение
-    const hemiLight = new THREE.HemisphereLight(0xc2dcf5, 0x2b394a, 1.35);
+    // Спокойное нейтральное инженерное освещение без кислотных оттенков
+    const hemiLight = new THREE.HemisphereLight(0xe4e6e8, 0x2e3034, 1.3);
     hemiLight.position.set(0, 25, 0);
     this.scene.add(hemiLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.8);
+    const keyLight = new THREE.DirectionalLight(0xfffaf0, 2.5);
     keyLight.position.set(14, 24, 16);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.width = 2048;
@@ -103,20 +103,20 @@ export class Furnace3D {
     keyLight.shadow.bias = -0.0004;
     this.scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0x6495ed, 1.8);
+    const rimLight = new THREE.DirectionalLight(0x9ca3af, 1.4);
     rimLight.position.set(-16, 14, -14);
     this.scene.add(rimLight);
 
-    const frontFillLight = new THREE.DirectionalLight(0x90a4ae, 1.1);
+    const frontFillLight = new THREE.DirectionalLight(0xb0b5ba, 1.0);
     frontFillLight.position.set(8, 6, 18);
     this.scene.add(frontFillLight);
 
-    const underLight = new THREE.DirectionalLight(0xf59e0b, 0.7);
+    const underLight = new THREE.DirectionalLight(0xd97706, 0.55);
     underLight.position.set(4, -10, 8);
     this.scene.add(underLight);
 
     // Внутренняя подсветка свода и ванны от расплава
-    this.bathGlowLight = new THREE.PointLight(0xff5500, 4.5, 13, 1.4);
+    this.bathGlowLight = new THREE.PointLight(0xff5500, 4.2, 13, 1.4);
     this.bathGlowLight.position.set(0, 0.8, 0);
     this.scene.add(this.bathGlowLight);
   }
@@ -228,42 +228,42 @@ export class Furnace3D {
   initMaterials() {
     this.materials = {
       heavySteel: new THREE.MeshStandardMaterial({
-        color: 0x526173,
-        roughness: 0.42,
-        metalness: 0.58
+        color: 0x5c6066,
+        roughness: 0.44,
+        metalness: 0.56
       }),
       darkSteel: new THREE.MeshStandardMaterial({
-        color: 0x35414f,
-        roughness: 0.48,
-        metalness: 0.55
+        color: 0x3b3e42,
+        roughness: 0.5,
+        metalness: 0.52
       }),
       structuralBeam: new THREE.MeshStandardMaterial({
-        color: 0x3e4c5e,
+        color: 0x45494f,
         roughness: 0.5,
-        metalness: 0.5
+        metalness: 0.48
       }),
       coolingPanel: new THREE.MeshStandardMaterial({
-        color: 0x5e748c,
+        color: 0x666c73,
         map: this.pipeTexture,
         bumpMap: this.pipeTexture,
         bumpScale: 0.035,
-        roughness: 0.38,
-        metalness: 0.62
-      }),
-      copperWaterPipe: new THREE.MeshStandardMaterial({
-        color: 0x3898bd, // Окрашенные магистрали охлаждающей воды
-        roughness: 0.35,
+        roughness: 0.4,
         metalness: 0.6
       }),
+      copperWaterPipe: new THREE.MeshStandardMaterial({
+        color: 0x56768a, // Магистрали охлаждающей воды (приглушенный серо-синий)
+        roughness: 0.38,
+        metalness: 0.55
+      }),
       copperBus: new THREE.MeshStandardMaterial({
-        color: 0xd97b43, // Медные токоведущие шины и зажимы
-        roughness: 0.28,
-        metalness: 0.78
+        color: 0xc87846, // Медные токоведущие шины и зажимы
+        roughness: 0.3,
+        metalness: 0.75
       }),
       chromeRod: new THREE.MeshStandardMaterial({
-        color: 0xe2e8f0, // Штоки гидроцилиндров и направляющие
-        roughness: 0.18,
-        metalness: 0.85
+        color: 0xdcdcdc, // Штоки гидроцилиндров и направляющие
+        roughness: 0.2,
+        metalness: 0.82
       }),
       refractoryBrick: new THREE.MeshStandardMaterial({
         color: 0xb5653b,
@@ -284,7 +284,7 @@ export class Furnace3D {
         metalness: 0.04
       }),
       graphite: new THREE.MeshStandardMaterial({
-        color: 0x262b31, // Графитированный электрод
+        color: 0x282a2d, // Графитированный электрод
         roughness: 0.55,
         metalness: 0.35
       }),
@@ -296,18 +296,18 @@ export class Furnace3D {
         metalness: 0.2
       }),
       concrete: new THREE.MeshStandardMaterial({
-        color: 0x1a2028,
+        color: 0x242629,
         roughness: 0.95,
         metalness: 0.08
       }),
       platformGrate: new THREE.MeshStandardMaterial({
-        color: 0x26303d,
+        color: 0x2f3237,
         map: this.grateTexture,
         roughness: 0.7,
-        metalness: 0.6
+        metalness: 0.55
       }),
       safetyRail: new THREE.MeshStandardMaterial({
-        color: 0x9a6b18, // Приглушенный индустриальный охристо-желтый для перил
+        color: 0x946b22, // Приглушенный индустриальный охристо-желтый для перил
         roughness: 0.5,
         metalness: 0.4
       }),
@@ -335,20 +335,20 @@ export class Furnace3D {
         metalness: 0.15
       }),
       arcPlasma: new THREE.MeshBasicMaterial({
-        color: 0xd8f3ff,
+        color: 0xfff5e6,
         transparent: true,
         opacity: 0.95
       }),
       arcHalo: new THREE.MeshBasicMaterial({
-        color: 0x60b5ff,
+        color: 0xffb366,
         transparent: true,
-        opacity: 0.38,
+        opacity: 0.35,
         side: THREE.DoubleSide
       }),
       edgeLine: new THREE.LineBasicMaterial({
-        color: 0x5c738a,
+        color: 0x70757d,
         transparent: true,
-        opacity: 0.28
+        opacity: 0.24
       })
     };
   }
@@ -370,7 +370,7 @@ export class Furnace3D {
     this.scene.add(this.envGroup);
 
     // Координатная сетка цеха на отметке -4.3м
-    const grid = new THREE.GridHelper(32, 32, 0x26384d, 0x131d28);
+    const grid = new THREE.GridHelper(32, 32, 0x32353b, 0x202226);
     grid.position.y = -4.29;
     this.envGroup.add(grid);
 
@@ -378,9 +378,9 @@ export class Furnace3D {
     const floorGeo = new THREE.PlaneGeometry(45, 45);
     floorGeo.rotateX(-Math.PI / 2);
     const floorMesh = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({
-      color: 0x0d1218,
+      color: 0x141618,
       roughness: 0.95,
-      metalness: 0.1
+      metalness: 0.08
     }));
     floorMesh.position.y = -4.3;
     floorMesh.receiveShadow = true;
