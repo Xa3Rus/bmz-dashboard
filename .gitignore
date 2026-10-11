@@ -1,4 +1,9 @@
 node_modules/
+**/node_modules/
 db/*.sqlite
 db/*.json
+training/db/*.sqlite
+training/db/*.json
+production/db/*.sqlite
+production/db/*.json
 run.log

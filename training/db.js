@@ -76,7 +76,10 @@ async function init(file) {
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const SQL = await initSqlJs({
-    locateFile: f => path.join(__dirname, 'node_modules', 'sql.js', 'dist', f)
+    locateFile: f => {
+      const localPath = path.join(__dirname, 'node_modules', 'sql.js', 'dist', f);
+      return fs.existsSync(localPath) ? localPath : path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', f);
+    }
   });
   if (fs.existsSync(file)) {
     db = new SQL.Database(fs.readFileSync(file));

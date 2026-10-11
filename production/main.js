@@ -10,7 +10,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#161719',
     autoHideMenuBar: true,
-    title: 'Цифровая плавка — БМЗ',
+    title: 'Цифровая плавка — ПРОМЫШЛЕННЫЙ АРМ ДСП-135 (ЭСПЦ-2) | ОАО «БМЗ»',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
     }
@@ -19,7 +19,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  await db.init(path.join(__dirname, 'db', 'bmz.sqlite'));
+  await db.init(path.join(__dirname, 'db', 'bmz-production.sqlite'));
   ipcMain.handle('api', (_e, method, args) => db.api(method, args));
   createWindow();
   app.on('activate', () => {

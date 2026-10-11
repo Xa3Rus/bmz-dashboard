@@ -1,10 +1,11 @@
 {
-  "name": "bmz-dashboard",
+  "name": "bmz-dashboard-suite",
   "version": "1.0.0",
-  "description": "Цифровая плавка — панель мониторинга ДСП (БМЗ)",
-  "main": "main.js",
+  "description": "АРМ «Цифровая плавка» — ДСП-135 (ОАО «БМЗ»): Учебный тренажёр (training/) и Промышленная версия (production/)",
   "scripts": {
-    "start": "electron ."
+    "start": "electron ./training",
+    "start:training": "electron ./training",
+    "start:production": "electron ./production"
   },
   "author": "Практикант ОУАиБД БМЗ",
   "license": "MIT",

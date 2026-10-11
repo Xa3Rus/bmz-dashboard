@@ -1,0 +1,20 @@
+{
+  "name": "bmz-dashboard-production",
+  "version": "1.0.0",
+  "description": "Цифровая плавка — Промышленный АРМ мониторинга ДСП-135 без эмуляции (ОАО «БМЗ» · ЭСПЦ-2)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "ОАО «БМЗ» · ЭСПЦ-2",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.7.0"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "sql.js": "^1.14.2",
+    "three": "^0.186.1"
+  }
+}
