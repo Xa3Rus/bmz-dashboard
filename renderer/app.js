@@ -173,13 +173,14 @@ async function loadDashboard() {
   }
 
   const actives = s.actives || [];
+  const totalFurnaces = s.plc?.totalFurnaces || (s.plc?.furnaces || []).length || 4;
   setDashboardConnectedLayout(actives.length > 0);
 
   if (actives.length > 0) {
     if (!actives.some(a => a.furnace_no === selectedFurnaceNo)) {
       selectedFurnaceNo = actives[0].furnace_no;
     }
-    renderFurnaceFleet(actives);
+    renderFurnaceFleet(actives, totalFurnaces);
     if (s.active) {
       updateMeltTitles(s.active);
     }
@@ -187,12 +188,13 @@ async function loadDashboard() {
   await tickLive(false);
 }
 
-function renderFurnaceFleet(actives) {
+function renderFurnaceFleet(actives, totalFurnaces = 4) {
   const bar = document.getElementById('furnaceFleetBar');
   if (!bar || !Array.isArray(actives)) return;
 
   const cardsHtml = actives.map(m => {
     const fNo = m.furnace_no || 1;
+    const fTitle = m.furnace_name || `ДСП-135 №${fNo}`;
     const isSel = fNo === selectedFurnaceNo;
     const pct = Math.min(100, Math.max(0, ((m.t_min || 0) / (m.duration_min || 65)) * 100));
     const stName = m.stage || stageName(m.t_min || 0, m.duration_min || 65);
@@ -205,7 +207,7 @@ function renderFurnaceFleet(actives) {
         <div class="fleet-top">
           <span class="fleet-unit-name">
             <span class="fleet-dot"></span>
-            ДСП-135 №${fNo}
+            ${fTitle}
           </span>
           <span class="fleet-tags-right">
             ${plcBadge}
@@ -223,14 +225,19 @@ function renderFurnaceFleet(actives) {
     `;
   }).join('');
 
-  const addMoreCard = actives.length < 4
+  const addMoreCard = actives.length < totalFurnaces
     ? `
-      <div class="fleet-card fleet-add-card" id="fleetAddFurnaceBtn" title="Подключить ещё печь в Центре ПЛК">
+      <div class="fleet-card fleet-add-card" id="fleetAddFurnaceBtn" title="Подключить или добавить печь в Центре ПЛК">
         <div class="fleet-add-title">+ ПОДКЛЮЧИТЬ ПЕЧЬ</div>
-        <div class="fleet-add-sub">Активно агрегатов: ${actives.length} из 4</div>
+        <div class="fleet-add-sub">Активно агрегатов: ${actives.length} из ${totalFurnaces}</div>
       </div>
     `
-    : '';
+    : `
+      <div class="fleet-card fleet-add-card" id="fleetAddFurnaceBtn" title="Добавить новую печь (ПЛК) в систему">
+        <div class="fleet-add-title">+ ДОБАВИТЬ ПЕЧЬ (ПЛК)</div>
+        <div class="fleet-add-sub">В работе все ${totalFurnaces} из ${totalFurnaces} печей</div>
+      </div>
+    `;
 
   bar.innerHTML = cardsHtml + addMoreCard;
 
@@ -253,11 +260,12 @@ function renderFurnaceFleet(actives) {
 
 function updateMeltTitles(melt) {
   const fNo = melt.furnace_no || selectedFurnaceNo;
-  document.getElementById('liveMeltNum').textContent = `ДСП-135 №${fNo}`;
+  const fTitle = melt.furnace_name || `ДСП-135 №${fNo}`;
+  document.getElementById('liveMeltNum').textContent = fTitle;
   document.getElementById('stepperMeltNum').textContent = melt.num;
   const stepperTitle = document.getElementById('stepperFurnaceTitle');
   if (stepperTitle) {
-    stepperTitle.textContent = `Цикл плавки · ДСП №${fNo} (${melt.steel_grade})`;
+    stepperTitle.textContent = `Цикл плавки · ${fTitle} (${melt.steel_grade})`;
   }
   const infoEl = document.getElementById('liveMeltInfo');
   if (infoEl) {
@@ -321,6 +329,7 @@ async function tickLive(advanceSimulation = true) {
   document.getElementById('kpiDuration').textContent = sum.avgDuration;
 
   const actives = sum.actives || [];
+  const totalFurnaces = sum.plc?.totalFurnaces || (sum.plc?.furnaces || []).length || 4;
   setDashboardConnectedLayout(actives.length > 0);
   if (!actives.length || !sum.active) {
     return;
@@ -330,7 +339,7 @@ async function tickLive(advanceSimulation = true) {
     selectedFurnaceNo = actives[0].furnace_no;
   }
 
-  renderFurnaceFleet(actives);
+  renderFurnaceFleet(actives, totalFurnaces);
 
   const sig = actives.map(a => a.id).join(',');
   if (lastActiveIdsSignature && lastActiveIdsSignature !== sig) {
@@ -718,22 +727,59 @@ async function loadGradesReference() {
 // 8. Шлюз АСУ ТП и подключение реальных ПЛК (OPC UA / Modbus TCP / MQTT / HTTP)
 // ==========================================================================
 let plcUnitsRenderedOnce = false;
+let lastFurnaceListSig = '';
 
 function syncGlobalPlcBadges(plc) {
   if (!plc) return;
+  const furnaces = plc.furnaces || [];
+  const totalCount = plc.totalFurnaces ?? (furnaces.length || 4);
+  const connCount = plc.connectedCount ?? furnaces.filter(u => u.connected).length;
+
   const navBadge = document.getElementById('navPlcBadge');
   if (navBadge) {
-    const connCount = plc.connectedCount ?? (plc.furnaces || []).filter(u => u.connected).length;
-    navBadge.textContent = `${connCount}/4`;
+    navBadge.textContent = `${connCount}/${totalCount}`;
     navBadge.classList.toggle('live-chip', connCount > 0);
   }
 
   const connState = document.getElementById('connState');
   if (connState) {
-    const connCount = plc.connectedCount ?? (plc.furnaces || []).filter(u => u.connected).length;
     connState.textContent = plc.gatewayRunning
-      ? `ПЕЧЕЙ: ${connCount}/4 · ШЛЮЗ :${plc.gatewayPort}`
+      ? `ПЕЧЕЙ: ${connCount}/${totalCount} · ШЛЮЗ :${plc.gatewayPort}`
       : 'БД: SQLite CONNECTED';
+  }
+
+  // Синхронизируем слоты на стартовом пустом экране и селекты печей при изменении состава цеха
+  const listSig = furnaces.map(f => `${f.furnace_no}:${f.name}:${f.controller}:${f.connected ? 1 : 0}`).join('|');
+  if (listSig !== lastFurnaceListSig) {
+    lastFurnaceListSig = listSig;
+
+    const emptySlotsEl = document.getElementById('dashEmptySlots');
+    if (emptySlotsEl && furnaces.length) {
+      emptySlotsEl.innerHTML = furnaces.map(f => {
+        const title = f.name || `ДСП-135 №${f.furnace_no}`;
+        return `<div class="dash-slot-chip">${title} · <span>${f.connected ? 'ПОДКЛЮЧЕНА' : 'ОТКЛЮЧЕНА'}</span></div>`;
+      }).join('');
+    }
+
+    const injSel = document.getElementById('injFurnace');
+    if (injSel && furnaces.length) {
+      const prevVal = injSel.value;
+      injSel.innerHTML = furnaces.map(f => {
+        const title = f.name || `ДСП-135 №${f.furnace_no}`;
+        return `<option value="${f.furnace_no}">${title} (${f.controller})</option>`;
+      }).join('');
+      if (furnaces.some(f => String(f.furnace_no) === prevVal)) {
+        injSel.value = prevVal;
+      }
+    }
+
+    const filterSel = document.getElementById('furnaceFilter');
+    if (filterSel && furnaces.length) {
+      const prevFilter = filterSel.value;
+      filterSel.innerHTML = `<option value="">Все печи (${furnaces.length} агр.)</option>` +
+        furnaces.map(f => `<option value="${f.furnace_no}">${f.name || ('ДСП-135 №' + f.furnace_no)}</option>`).join('');
+      filterSel.value = prevFilter;
+    }
   }
 
   // Если открыта вкладка ПЛК, обновляем счётчики и лог кадров без сброса фокуса в инпутах
@@ -743,12 +789,101 @@ function syncGlobalPlcBadges(plc) {
   }
 }
 
+function suggestNextFurnaceDefaults(plc) {
+  const nums = (plc?.furnaces || []).map(f => Number(f.furnace_no)).filter(Boolean);
+  let nextNo = 1;
+  while (nums.includes(nextNo)) nextNo++;
+  const noInput = document.getElementById('newFurnaceNo');
+  const nameInput = document.getElementById('newFurnaceName');
+  if (noInput) noInput.value = nextNo;
+  if (nameInput) nameInput.value = `ДСП-135 №${nextNo}`;
+}
+
+function openAddFurnacePanel(plc) {
+  const panel = document.getElementById('addFurnacePanel');
+  if (!panel) return;
+  if (plc) suggestNextFurnaceDefaults(plc);
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 async function initPlcView() {
   const plc = await call('plc:status');
   if (!plc) return;
 
+  syncGlobalPlcBadges(plc);
   renderPlcUnitsCards(plc);
   updatePlcRuntimeWidgets(plc);
+  suggestNextFurnaceDefaults(plc);
+
+  // Открытие / закрытие панели регистрации новой печи
+  document.getElementById('btnOpenAddFurnace')?.addEventListener('click', async () => {
+    const cur = await call('plc:status');
+    openAddFurnacePanel(cur);
+  });
+
+  document.getElementById('btnCloseAddFurnace')?.addEventListener('click', () => {
+    const panel = document.getElementById('addFurnacePanel');
+    if (panel) panel.style.display = 'none';
+  });
+
+  document.getElementById('newFurnaceNo')?.addEventListener('input', e => {
+    const n = Number(e.target.value) || 1;
+    const nameInput = document.getElementById('newFurnaceName');
+    if (nameInput && (!nameInput.value || /^ДСП-135 №\d+$/i.test(nameInput.value.trim()))) {
+      nameInput.value = `ДСП-135 №${n}`;
+    }
+  });
+
+  // Подтверждение добавления новой печи (ПЛК)
+  document.getElementById('btnConfirmAddFurnace')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnConfirmAddFurnace');
+    const furnace_no = Number(document.getElementById('newFurnaceNo')?.value) || undefined;
+    const name = document.getElementById('newFurnaceName')?.value.trim();
+    const steel_grade = document.getElementById('newFurnaceGrade')?.value || 'Ст3сп';
+    const controller = document.getElementById('newFurnaceController')?.value.trim() || 'Siemens SIMATIC S7-1518F';
+    const protocol = document.getElementById('newFurnaceProtocol')?.value || 'OPC UA';
+    const host = document.getElementById('newFurnaceHost')?.value.trim() || '127.0.0.1';
+    const port = Number(document.getElementById('newFurnacePort')?.value) || 4580;
+    const autoConnect = Boolean(document.getElementById('newFurnaceAutoConnect')?.checked);
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'РЕГИСТРАЦИЯ И ПРОВЕРКА...';
+    }
+
+    const res = await call('plc:add', {
+      furnace_no,
+      name,
+      steel_grade,
+      controller,
+      protocol,
+      host,
+      port,
+      autoConnect
+    });
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'СОЗДАТЬ И ДОБАВИТЬ ПЕЧЬ';
+    }
+
+    if (res && res.ok) {
+      if (autoConnect && res.furnace_no) {
+        selectedFurnaceNo = res.furnace_no;
+      }
+      const panel = document.getElementById('addFurnacePanel');
+      if (panel) panel.style.display = 'none';
+
+      const updated = await call('plc:status');
+      syncGlobalPlcBadges(updated);
+      renderPlcUnitsCards(updated);
+      updatePlcRuntimeWidgets(updated);
+      suggestNextFurnaceDefaults(updated);
+      await tickLive(false);
+      await loadMelts();
+    }
+  });
 
   // Переключение режима источника телеметрии
   document.querySelectorAll('#plcModeSelector .plc-mode-btn').forEach(btn => {
@@ -760,10 +895,11 @@ async function initPlcView() {
     });
   });
 
-  // Сохранение настроек IP / портов / узлов всех 4 печей
+  // Сохранение настроек IP / портов / узлов всех печей
   document.getElementById('btnSavePlcConfig')?.addEventListener('click', async () => {
     const furnaces = collectPlcCardsConfig();
     const updated = await call('plc:config', { furnaces });
+    syncGlobalPlcBadges(updated);
     renderPlcUnitsCards(updated);
     updatePlcRuntimeWidgets(updated);
     const btn = document.getElementById('btnSavePlcConfig');
@@ -863,6 +999,7 @@ function updateCurlSample() {
 async function refreshPlcStatusOnly(rebuildCards = false) {
   const plc = await call('plc:status');
   if (!plc) return;
+  syncGlobalPlcBadges(plc);
   if (rebuildCards || !plcUnitsRenderedOnce) {
     renderPlcUnitsCards(plc);
   }
@@ -904,21 +1041,26 @@ function renderPlcUnitsCards(plc) {
   plcUnitsRenderedOnce = true;
 
   const protocols = ['OPC UA', 'Modbus TCP', 'MQTT / HTTP', 'Siemens S7comm'];
+  const canDelete = plc.furnaces.length > 1;
 
-  grid.innerHTML = plc.furnaces.map(f => {
+  const cardsHtml = plc.furnaces.map(f => {
     const fNo = f.furnace_no;
+    const fTitle = f.name || `ДСП-135 №${fNo}`;
     const pres = getFurnaceStatePresentation(f);
     const isConn = Boolean(f.connected);
 
     return `
       <div class="plc-unit-card ${pres.cardClass}" id="plcCard-${fNo}" data-furnace="${fNo}">
         <div class="plc-unit-head">
-          <span class="plc-unit-title">ДСП-135 №${fNo}</span>
-          <span class="fleet-src-badge ${pres.badgeClass}" id="plcUnitState-${fNo}">
-            ${pres.badgeLabel}
-          </span>
+          <span class="plc-unit-title">${fTitle}</span>
+          <div class="plc-unit-head-right">
+            <span class="fleet-src-badge ${pres.badgeClass}" id="plcUnitState-${fNo}">
+              ${pres.badgeLabel}
+            </span>
+            ${canDelete ? `<button class="plc-del-btn" data-del-furnace="${fNo}" title="Удалить узел печи №${fNo}">✕</button>` : ''}
+          </div>
         </div>
-        <div class="plc-unit-sub">${f.controller}</div>
+        <div class="plc-unit-sub">${f.controller} · Марка: <b>${f.steel_grade || 'Ст3сп'}</b></div>
 
         <label>Промышленный протокол
           <select class="plc-inp-proto" data-fno="${fNo}">
@@ -936,7 +1078,7 @@ function renderPlcUnitsCards(plc) {
         </div>
 
         <label>Узел OPC UA / Регистры / Топик
-          <input type="text" class="plc-inp-endpoint" data-fno="${fNo}" value="${f.endpoint.replace(/"/g, '&quot;')}">
+          <input type="text" class="plc-inp-endpoint" data-fno="${fNo}" value="${(f.endpoint || '').replace(/"/g, '&quot;')}">
         </label>
 
         <div class="plc-unit-meta">
@@ -960,6 +1102,34 @@ function renderPlcUnitsCards(plc) {
       </div>
     `;
   }).join('');
+
+  const addUnitCardHtml = `
+    <div class="plc-unit-card plc-add-unit-card" id="plcCardAddBtn">
+      <div class="plc-add-unit-inner">
+        <div class="plc-add-unit-plus">+</div>
+        <div class="plc-add-unit-title">ДОБАВИТЬ ПЕЧЬ (ПЛК)</div>
+        <div class="plc-add-unit-desc">Регистрация нового агрегата ДСП / ДСП-135 в системе мониторинга цеха (всего в списке: ${plc.furnaces.length})</div>
+      </div>
+    </div>
+  `;
+
+  grid.innerHTML = cardsHtml + addUnitCardHtml;
+
+  document.getElementById('plcCardAddBtn')?.addEventListener('click', () => {
+    openAddFurnacePanel(plc);
+  });
+
+  grid.querySelectorAll('.plc-del-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const fNo = Number(btn.dataset.delFurnace);
+      const res = await call('plc:remove', { furnace_no: fNo });
+      if (res && res.ok) {
+        await refreshPlcStatusOnly(true);
+        await tickLive(false);
+      }
+    });
+  });
 
   grid.querySelectorAll('.plc-connect-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1010,11 +1180,13 @@ function renderPlcUnitsCards(plc) {
 
 function collectPlcCardsConfig() {
   const furnaces = {};
-  for (const fNo of [1, 2, 3, 4]) {
-    const protoEl = document.querySelector(`.plc-inp-proto[data-fno="${fNo}"]`);
-    const hostEl = document.querySelector(`.plc-inp-host[data-fno="${fNo}"]`);
-    const portEl = document.querySelector(`.plc-inp-port[data-fno="${fNo}"]`);
-    const epEl = document.querySelector(`.plc-inp-endpoint[data-fno="${fNo}"]`);
+  document.querySelectorAll('#plcUnitsGrid .plc-unit-card[data-furnace]').forEach(card => {
+    const fNo = Number(card.dataset.furnace);
+    if (!fNo) return;
+    const protoEl = card.querySelector(`.plc-inp-proto[data-fno="${fNo}"]`);
+    const hostEl = card.querySelector(`.plc-inp-host[data-fno="${fNo}"]`);
+    const portEl = card.querySelector(`.plc-inp-port[data-fno="${fNo}"]`);
+    const epEl = card.querySelector(`.plc-inp-endpoint[data-fno="${fNo}"]`);
     if (protoEl && hostEl && portEl && epEl) {
       furnaces[fNo] = {
         protocol: protoEl.value,
@@ -1023,7 +1195,7 @@ function collectPlcCardsConfig() {
         endpoint: epEl.value
       };
     }
-  }
+  });
   return furnaces;
 }
 

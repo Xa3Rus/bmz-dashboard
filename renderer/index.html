@@ -115,7 +115,7 @@
             <p class="dash-empty-desc">
               Карточки агрегатов, телеметрия плавки и 3D-цифровой двойник появляются на экране мониторинга только после непосредственного подключения соответствующей печи с проверкой канала связи в разделе <b>«Подключение ПЛК»</b>.
             </p>
-            <div class="dash-empty-slots">
+            <div class="dash-empty-slots" id="dashEmptySlots">
               <div class="dash-slot-chip">ДСП-135 №1 · <span>ОТКЛЮЧЕНА</span></div>
               <div class="dash-slot-chip">ДСП-135 №2 · <span>ОТКЛЮЧЕНА</span></div>
               <div class="dash-slot-chip">ДСП-135 №3 · <span>ОТКЛЮЧЕНА</span></div>
@@ -428,15 +428,68 @@
               <b class="plc-gw-val" id="plcTotalRx">0</b>
             </div>
             <div class="plc-gw-actions">
-              <button class="btn-secondary" id="btnTogglePlcStream">ЗАПУСТИТЬ ЭМУЛЯТОР 4 ПЛК (HTTP ПОТОК)</button>
+              <button class="btn-secondary" id="btnOpenAddFurnace">+ ДОБАВИТЬ ПЕЧЬ (ПЛК)</button>
+              <button class="btn-secondary" id="btnTogglePlcStream">ЗАПУСТИТЬ ЭМУЛЯТОР ПЛК (HTTP ПОТОК)</button>
               <button class="btn-primary btn-sm" id="btnSavePlcConfig">СОХРАНИТЬ КОНФИГУРАЦИЮ</button>
             </div>
           </div>
         </div>
 
-        <!-- Карточки настройки каналов связи 4 параллельных печей ДСП-135 №1..4 -->
+        <!-- Форма добавления новой сталеплавильной печи (ПЛК) без ограничения количества -->
+        <div class="panel plc-add-panel" id="addFurnacePanel" style="display:none">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">РЕГИСТРАЦИЯ НОВОГО СТАЛЕПЛАВИЛЬНОГО АГРЕГАТА В СИСТЕМЕ</div>
+              <div class="panel-sub">Добавление печи ДСП / ДСП-135 и настройка контроллера ПЛК (без ограничения количества печей в цехе)</div>
+            </div>
+            <button class="btn-close" id="btnCloseAddFurnace">СКРЫТЬ ФОРМУ ✕</button>
+          </div>
+
+          <div class="plc-add-grid">
+            <label>Номер печи (узел)
+              <input type="number" id="newFurnaceNo" value="5" min="1" max="99">
+            </label>
+            <label>Наименование агрегата
+              <input type="text" id="newFurnaceName" value="ДСП-135 №5" placeholder="Напр.: ДСП-135 №5">
+            </label>
+            <label>Базовая марка стали
+              <select id="newFurnaceGrade" class="select-styled">
+                <option value="Ст3сп">Ст3сп</option>
+                <option value="09Г2С">09Г2С</option>
+                <option value="40Х">40Х</option>
+                <option value="65Г">65Г</option>
+              </select>
+            </label>
+            <label>Модель контроллера ПЛК
+              <input type="text" id="newFurnaceController" value="Siemens SIMATIC S7-1518F" placeholder="Siemens S7-1500 / Modicon M580">
+            </label>
+            <label>Промышленный протокол
+              <select id="newFurnaceProtocol" class="select-styled">
+                <option value="OPC UA">OPC UA (IEC 62541)</option>
+                <option value="Modbus TCP">Modbus TCP/IP</option>
+                <option value="MQTT / HTTP">MQTT / HTTP REST</option>
+                <option value="Siemens S7comm">Siemens S7comm</option>
+              </select>
+            </label>
+            <label>IP-адрес ПЛК
+              <input type="text" id="newFurnaceHost" value="127.0.0.1" placeholder="192.168.10.15">
+            </label>
+            <label>TCP-порт
+              <input type="number" id="newFurnacePort" value="4580" min="1" max="65535">
+            </label>
+            <div class="plc-add-submit-col">
+              <label class="plc-check-row">
+                <input type="checkbox" id="newFurnaceAutoConnect" checked>
+                <span>Сразу подключить к мониторингу</span>
+              </label>
+              <button class="btn-primary" id="btnConfirmAddFurnace">СОЗДАТЬ И ДОБАВИТЬ ПЕЧЬ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Карточки настройки каналов связи параллельных печей цеха (1..N) -->
         <div class="plc-units-grid" id="plcUnitsGrid">
-          <!-- Динамически заполняется 4 карточками контроллеров ДСП №1..4 -->
+          <!-- Динамически заполняется карточками контроллеров ДСП №1..N -->
         </div>
 
         <!-- Нижний блок: Стенд инжекции реальных пакетов + Живой монитор протокола обмена -->
@@ -585,9 +638,9 @@
           <div class="cycle-grid">
             <div class="cycle-card">
               <div class="cycle-num">ШАГ 01</div>
-              <div class="cycle-title">ПОДКЛЮЧЕНИЕ ПЕЧЕЙ В ЦЕНТРЕ ПЛК</div>
-              <div class="cycle-desc">При запуске программы ни одна печь не выведена на экран мониторинга. Перейдите во вкладку <b>Подключение ПЛК</b> и нажмите кнопку <b>ПОДКЛЮЧИТЬ ПЕЧЬ №1..4</b> на нужных агрегатах. Система выполнит проверку TCP-канала связи и добавит карточку печи на главный экран.</div>
-              <div class="cycle-meta">Вкладка «Подключение ПЛК» (кнопка «Подключить печь»)</div>
+              <div class="cycle-title">ДОБАВЛЕНИЕ И ПОДКЛЮЧЕНИЕ ПЕЧЕЙ В ЦЕНТРЕ ПЛК</div>
+              <div class="cycle-desc">При запуске программы ни одна печь не выведена на экран мониторинга. Перейдите во вкладку <b>Подключение ПЛК</b>, нажмите <b>ПОДКЛЮЧИТЬ ПЕЧЬ</b> на нужных агрегатах или зарегистрируйте новые печи кнопкой <b>+ ДОБАВИТЬ ПЕЧЬ (ПЛК)</b> (поддерживается любое количество агрегатов в цехе).</div>
+              <div class="cycle-meta">Вкладка «Подключение ПЛК» (добавление и подключение)</div>
             </div>
             <div class="cycle-card">
               <div class="cycle-num">ШАГ 02</div>

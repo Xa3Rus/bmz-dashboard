@@ -242,22 +242,27 @@ function seed() {
   }
 }
 
-// ---------- Симуляция и приём телеметрии ПЛК для 4 параллельных печей ----------
+// ---------- Симуляция и приём телеметрии ПЛК для произвольного парка печей (1..N) ----------
 
 function activeMelts(includeDisconnected = false) {
   const list = [];
   const plcStat = plcConnector.getStatus();
-  for (let fNo = 1; fNo <= 4; fNo++) {
-    const unitCfg = plcStat.furnaces.find(u => u.furnace_no === fNo) || {};
+  for (const unitCfg of plcStat.furnaces) {
+    const fNo = unitCfg.furnace_no;
     if (!includeDisconnected && !unitCfg.connected) {
       continue;
     }
 
     let m = q("SELECT * FROM melts WHERE status='active' AND furnace_no=? ORDER BY id DESC LIMIT 1", [fNo])[0];
     if (!m) {
-      const grade = GRADES[(fNo - 1) % GRADES.length].name;
-      const newId = createPreheatedActiveMelt(fNo, grade, 1.0, Math.floor(rnd(10, 99)));
+      const grade = unitCfg.steel_grade || GRADES[(fNo - 1) % GRADES.length].name;
+      const newId = createPreheatedActiveMelt(fNo, grade, rnd(2.0, 28.0), Math.floor(rnd(10, 99)));
       m = q("SELECT * FROM melts WHERE id=?", [newId])[0];
+      persist();
+    } else if (unitCfg.steel_grade && m.steel_grade !== unitCfg.steel_grade && m.energy_kwh < 500) {
+      // Синхронизируем марку стали, если она была задана в настройках печи при добавлении
+      run('UPDATE melts SET steel_grade=? WHERE id=?', [unitCfg.steel_grade, m.id]);
+      m.steel_grade = unitCfg.steel_grade;
     }
     const lastPt = q("SELECT t_min, temp_c, power_mw FROM temp_points WHERE melt_id=? ORDER BY t_min DESC LIMIT 1", [m.id])[0] || {
       t_min: 0,
@@ -267,6 +272,7 @@ function activeMelts(includeDisconnected = false) {
     const st = stageAt(lastPt.t_min);
     list.push({
       ...m,
+      furnace_name: unitCfg.name || `ДСП-135 №${fNo}`,
       t_min: lastPt.t_min,
       temp_c: lastPt.temp_c,
       power_mw: lastPt.power_mw,
@@ -461,6 +467,27 @@ function api(method, args = {}) {
     }
     case 'plc:connect': {
       return plcConnector.setFurnaceConnection(args.furnace_no, args.connect !== false);
+    }
+    case 'plc:add': {
+      return (async () => {
+        const res = await plcConnector.addFurnace(args);
+        if (res.ok && res.furnace_no) {
+          const fNo = res.furnace_no;
+          const existing = q("SELECT * FROM melts WHERE status='active' AND furnace_no=? ORDER BY id DESC LIMIT 1", [fNo])[0];
+          const chosenGrade = args.steel_grade || GRADES[(fNo - 1) % GRADES.length].name;
+          if (!existing) {
+            createPreheatedActiveMelt(fNo, chosenGrade, rnd(3.0, 26.0), Math.floor(rnd(10, 95)));
+            persist();
+          } else if (args.steel_grade && existing.steel_grade !== args.steel_grade) {
+            run('UPDATE melts SET steel_grade=? WHERE id=?', [args.steel_grade, existing.id]);
+            persist();
+          }
+        }
+        return res;
+      })();
+    }
+    case 'plc:remove': {
+      return plcConnector.removeFurnace(args.furnace_no);
     }
     case 'plc:inject': {
       return plcConnector.ingestTelemetryPacket(args, 'ARM-OPERATOR');

@@ -21,11 +21,13 @@ class PlcConnector {
     this.totalRxPackets = 0;
     this.packetLog = []; // Последние 60 кадров обмена
 
-    // Конфигурация 4 промышленных контроллеров печей ДСП-135 №1..4
+    // Конфигурация промышленных контроллеров печей цеха (количество печей не ограничено)
     // По умолчанию при запуске ни одна печь не подключена к мониторингу до ручного подключения в Центре ПЛК
     this.furnaces = {
       1: {
         furnace_no: 1,
+        name: 'ДСП-135 №1',
+        steel_grade: 'Ст3сп',
         enabled: true,
         connected: false,
         connected_at: null,
@@ -44,6 +46,8 @@ class PlcConnector {
       },
       2: {
         furnace_no: 2,
+        name: 'ДСП-135 №2',
+        steel_grade: '09Г2С',
         enabled: true,
         connected: false,
         connected_at: null,
@@ -62,6 +66,8 @@ class PlcConnector {
       },
       3: {
         furnace_no: 3,
+        name: 'ДСП-135 №3',
+        steel_grade: '40Х',
         enabled: true,
         connected: false,
         connected_at: null,
@@ -80,6 +86,8 @@ class PlcConnector {
       },
       4: {
         furnace_no: 4,
+        name: 'ДСП-135 №4',
+        steel_grade: '65Г',
         enabled: true,
         connected: false,
         connected_at: null,
@@ -99,6 +107,13 @@ class PlcConnector {
     };
   }
 
+  getFurnaceNumbers() {
+    return Object.keys(this.furnaces)
+      .map(Number)
+      .filter(n => Number.isInteger(n) && n > 0)
+      .sort((a, b) => a - b);
+  }
+
   init(configPath, onTelemetry) {
     this.configFile = configPath;
     this.onTelemetryCallback = onTelemetry;
@@ -112,22 +127,37 @@ class PlcConnector {
       const raw = JSON.parse(fs.readFileSync(this.configFile, 'utf-8'));
       if (raw.mode) this.mode = raw.mode;
       if (raw.gatewayPort) this.gatewayPort = Number(raw.gatewayPort) || 4580;
-      if (raw.furnaces) {
-        for (const k of [1, 2, 3, 4]) {
-          if (raw.furnaces[k]) {
-            this.furnaces[k] = {
-              ...this.furnaces[k],
-              ...raw.furnaces[k],
-              furnace_no: k,
-              // На старте сессии печи всегда отключены до явного подключения оператором
-              connected: false,
-              connected_at: null,
-              status: 'OFFLINE',
-              ping_ms: null,
-              rx_count: 0,
-              last_rx_at: null
-            };
-          }
+      if (raw.furnaces && typeof raw.furnaces === 'object') {
+        const loaded = {};
+        for (const key of Object.keys(raw.furnaces)) {
+          const k = Number(key);
+          if (!Number.isInteger(k) || k <= 0) continue;
+          const saved = raw.furnaces[key];
+          const base = this.furnaces[k] || {};
+          loaded[k] = {
+            furnace_no: k,
+            name: saved.name || base.name || `ДСП-135 №${k}`,
+            steel_grade: saved.steel_grade || base.steel_grade || 'Ст3сп',
+            enabled: saved.enabled !== undefined ? Boolean(saved.enabled) : true,
+            protocol: saved.protocol || base.protocol || 'OPC UA',
+            controller: saved.controller || base.controller || `Контроллер ПЛК ДСП №${k}`,
+            host: saved.host || base.host || '127.0.0.1',
+            port: Number(saved.port) || base.port || 4580,
+            endpoint: saved.endpoint || base.endpoint || `ns=3;s="DB_EAF${k}_Telemetry"`,
+            poll_ms: Number(saved.poll_ms) || 1000,
+            read_only: true,
+            // На старте сессии печи всегда отключены до явного подключения оператором
+            connected: false,
+            connected_at: null,
+            status: 'OFFLINE',
+            ping_ms: null,
+            rx_count: 0,
+            last_rx_at: null,
+            last_payload: null
+          };
+        }
+        if (Object.keys(loaded).length > 0) {
+          this.furnaces = loaded;
         }
       }
     } catch (err) {
@@ -143,10 +173,12 @@ class PlcConnector {
         gatewayPort: this.gatewayPort,
         furnaces: {}
       };
-      for (const k of [1, 2, 3, 4]) {
+      for (const k of this.getFurnaceNumbers()) {
         const f = this.furnaces[k];
         serializable.furnaces[k] = {
           furnace_no: k,
+          name: f.name || `ДСП-135 №${k}`,
+          steel_grade: f.steel_grade || 'Ст3сп',
           enabled: f.enabled,
           protocol: f.protocol,
           controller: f.controller,
@@ -241,19 +273,19 @@ class PlcConnector {
 
   ingestTelemetryPacket(packet, sourceIp = '127.0.0.1') {
     const fNo = Number(packet.furnace_no || packet.furnace || 1);
-    if (![1, 2, 3, 4].includes(fNo)) {
-      throw new Error('Поле furnace_no должно быть от 1 до 4');
+    const fCfg = this.furnaces[fNo];
+    if (!fCfg) {
+      throw new Error(`Печь ДСП №${fNo} не зарегистрирована в конфигурации цеха`);
     }
 
-    const fCfg = this.furnaces[fNo];
     if (!fCfg.connected) {
       this.appendLog(
         packet.source || fCfg.protocol,
         fNo,
         'WARN',
-        `Пакет для ДСП №${fNo} отклонён: агрегат не подключён в Центре подключения ПЛК`
+        `Пакет для ${fCfg.name || 'ДСП №' + fNo} отклонён: агрегат не подключён в Центре подключения ПЛК`
       );
-      return { ok: false, furnace_no: fNo, error: `ДСП-135 №${fNo} не подключена к мониторингу` };
+      return { ok: false, furnace_no: fNo, error: `${fCfg.name || 'ДСП-135 №' + fNo} не подключена к мониторингу` };
     }
 
     const nowIso = new Date().toISOString();
@@ -319,7 +351,7 @@ class PlcConnector {
           fCfg.protocol,
           fNo,
           ok ? 'OK' : 'ERR',
-          `Проверка канала ДСП №${fNo} (${fCfg.host}:${fCfg.port}): ${msg} [${elapsed} мс]`
+          `Проверка канала ${fCfg.name || 'ДСП №' + fNo} (${fCfg.host}:${fCfg.port}): ${msg} [${elapsed} мс]`
         );
         resolve({
           ok,
@@ -352,7 +384,7 @@ class PlcConnector {
       fCfg.connected_at = null;
       fCfg.status = 'OFFLINE';
       fCfg.ping_ms = null;
-      this.appendLog('CFG', fNo, 'WARN', `ДСП-135 №${fNo} (${fCfg.controller}) отключена от поста мониторинга АРМ`);
+      this.appendLog('CFG', fNo, 'WARN', `${fCfg.name || 'ДСП-135 №' + fNo} (${fCfg.controller}) отключена от поста мониторинга АРМ`);
       return { ok: true, connected: false, furnace_no: fNo, status: this.getStatus() };
     }
 
@@ -377,8 +409,8 @@ class PlcConnector {
       fNo,
       'OK',
       testRes.ok
-        ? `ДСП-135 №${fNo} (${fCfg.controller}) подключена к посту мониторинга [${testRes.ping_ms} мс]`
-        : `ДСП-135 №${fNo} подключена к мониторингу (резервный контур модели — узел ${fCfg.host}:${fCfg.port} недоступен)`
+        ? `${fCfg.name || 'ДСП-135 №' + fNo} (${fCfg.controller}) подключена к посту мониторинга [${testRes.ping_ms} мс]`
+        : `${fCfg.name || 'ДСП-135 №' + fNo} подключена к мониторингу (резервный контур модели — узел ${fCfg.host}:${fCfg.port} недоступен)`
     );
 
     return {
@@ -388,6 +420,68 @@ class PlcConnector {
       ping_ms: testRes.ping_ms,
       status: this.getStatus()
     };
+  }
+
+  // Добавление новой печи (узла ПЛК) без ограничения по количеству печей на предприятии
+  async addFurnace(params = {}) {
+    const existingNums = this.getFurnaceNumbers();
+    const maxNo = existingNums.length ? Math.max(...existingNums) : 0;
+    let fNo = Number(params.furnace_no) || (maxNo + 1);
+    if (!Number.isInteger(fNo) || fNo <= 0 || this.furnaces[fNo]) {
+      fNo = maxNo + 1;
+    }
+
+    const protocol = params.protocol || 'OPC UA';
+    const defaultEndpoint = protocol === 'Modbus TCP'
+      ? `UnitID=${fNo} · Holding Reg 40001–40024`
+      : protocol === 'MQTT / HTTP'
+        ? `bmz/espc2/dsp${fNo}/telemetry`
+        : `ns=3;s="DB_EAF${fNo}_Telemetry"`;
+
+    const entry = {
+      furnace_no: fNo,
+      name: (params.name || `ДСП-135 №${fNo}`).trim(),
+      steel_grade: params.steel_grade || 'Ст3сп',
+      enabled: true,
+      connected: false,
+      connected_at: null,
+      protocol,
+      controller: (params.controller || `Siemens SIMATIC S7-1518F (Пост №${fNo})`).trim(),
+      host: (params.host || '127.0.0.1').trim(),
+      port: Number(params.port) || 4580,
+      endpoint: (params.endpoint || defaultEndpoint).trim(),
+      poll_ms: 1000,
+      read_only: true,
+      status: 'OFFLINE',
+      ping_ms: null,
+      rx_count: 0,
+      last_rx_at: null,
+      last_payload: null
+    };
+
+    this.furnaces[fNo] = entry;
+    this.saveConfig();
+    this.appendLog('CFG', fNo, 'INFO', `Зарегистрирован новый агрегат ${entry.name} (${entry.controller} · ${entry.protocol})`);
+
+    if (params.autoConnect) {
+      await this.setFurnaceConnection(fNo, true);
+    }
+
+    return { ok: true, furnace_no: fNo, furnace: this.furnaces[fNo], status: this.getStatus() };
+  }
+
+  // Удаление узла печи из конфигурации
+  removeFurnace(furnaceNo) {
+    const fNo = Number(furnaceNo);
+    const fCfg = this.furnaces[fNo];
+    if (!fCfg) {
+      return { ok: false, error: 'Печь не найдена', status: this.getStatus() };
+    }
+    const name = fCfg.name || `ДСП-135 №${fNo}`;
+    delete this.furnaces[fNo];
+    this.saveConfig();
+    this.appendLog('CFG', fNo, 'WARN', `Удалён узел агрегата ${name} из конфигурации цеха`);
+    return { ok: true, removed_furnace_no: fNo, status: this.getStatus() };
   }
 
   // Встроенный эмулятор внешнего ПЛК-передатчика (отправляет реальные HTTP-пакеты только для подключённых печей)
@@ -407,9 +501,9 @@ class PlcConnector {
 
     const sendCycle = () => {
       const actives = typeof getActiveMeltsFn === 'function' ? getActiveMeltsFn() : [];
-      for (let fNo = 1; fNo <= 4; fNo++) {
+      for (const fNo of this.getFurnaceNumbers()) {
         const fCfg = this.furnaces[fNo];
-        if (!fCfg.enabled || !fCfg.connected) continue;
+        if (!fCfg || !fCfg.enabled || !fCfg.connected) continue;
 
         const m = actives.find(a => a.furnace_no === fNo) || { t_min: 15, temp_c: 1540, power_mw: 42.5, duration_min: 65 };
         const nextT = ((Number(m.t_min) || 0) + 0.55) % (m.duration_min || 65);
@@ -470,11 +564,13 @@ class PlcConnector {
       this.appendLog('CFG', 0, 'INFO', `Режим источника данных переключён на: ${mode.toUpperCase()}`);
     }
     if (furnaces && typeof furnaces === 'object') {
-      for (const k of [1, 2, 3, 4]) {
+      for (const k of this.getFurnaceNumbers()) {
         const item = furnaces[k] || furnaces[String(k)];
         if (item) {
           this.furnaces[k] = {
             ...this.furnaces[k],
+            name: item.name ? item.name.trim() : this.furnaces[k].name,
+            steel_grade: item.steel_grade || this.furnaces[k].steel_grade,
             enabled: item.enabled !== undefined ? Boolean(item.enabled) : this.furnaces[k].enabled,
             protocol: item.protocol || this.furnaces[k].protocol,
             controller: item.controller || this.furnaces[k].controller,
@@ -499,7 +595,7 @@ class PlcConnector {
 
   getStatus() {
     const now = Date.now();
-    const units = [1, 2, 3, 4].map(k => {
+    const units = this.getFurnaceNumbers().map(k => {
       const f = this.furnaces[k];
       const isFresh = f.connected && f.last_rx_at && (now - new Date(f.last_rx_at).getTime() <= 12000);
       let effectiveSource = 'DISCONNECTED';
@@ -527,6 +623,7 @@ class PlcConnector {
       virtualPlcActive: this.virtualPlcActive,
       totalRxPackets: this.totalRxPackets,
       connectedCount: units.filter(u => u.connected).length,
+      totalFurnaces: units.length,
       furnaces: units,
       packetLog: this.packetLog.slice(0, 35)
     };
