@@ -1,4 +1,5 @@
-// Модуль подключения к ПЛК и приёма телеметрии по HTTP (:4580)
+// Промышленный коннектор АСУ ТП ЭСПЦ-2
+// Поддержка HTTP REST (:4580), нативного Modbus TCP клиента и автоматического резервирования (LAN 1 / LAN 2)
 const http = require('http');
 const net = require('net');
 const fs = require('fs');
@@ -24,6 +25,11 @@ class PlcConnector {
     this.packetLog = [];
 
     this.furnaces = {};
+
+    // Таймеры и сокеты для нативного опроса Modbus TCP
+    this.modbusPollers = {};
+    this.modbusSockets = {};
+    this.modbusTransId = 1;
   }
 
   getFurnaceNumbers() {
@@ -67,6 +73,7 @@ class PlcConnector {
           if (!Number.isInteger(fNo) || fNo < 1) continue;
           const saved = raw.furnaces[key];
           const host = saved.host || `192.168.10.${10 + fNo}`;
+          const backup_host = saved.backup_host || '';
           const port = Number(saved.port) || 4840;
           const protocol = saved.protocol || 'OPC UA';
           loadedFurnaces[fNo] = {
@@ -76,6 +83,8 @@ class PlcConnector {
             controller: saved.controller || 'Siemens SIMATIC S7-1518F-4 PN/DP',
             protocol,
             host,
+            backup_host,
+            active_channel: 'main', // 'main' (LAN 1) или 'backup' (LAN 2)
             port,
             endpoint: saved.endpoint || this.defaultEndpointForProtocol(protocol, fNo, host, port),
             poll_ms: Number(saved.poll_ms) || 1000,
@@ -110,6 +119,7 @@ class PlcConnector {
           controller: f.controller,
           protocol: f.protocol,
           host: f.host,
+          backup_host: f.backup_host || '',
           port: f.port,
           endpoint: f.endpoint,
           poll_ms: f.poll_ms
@@ -129,6 +139,7 @@ class PlcConnector {
 
     const protocol = params.protocol || 'OPC UA';
     const host = (params.host || `192.168.10.${10 + fNo}`).trim();
+    const backup_host = (params.backup_host || '').trim();
     const port = Number(params.port) || 4840;
     const name = (params.name || `ДСП-135 №${fNo}`).trim();
     const controller = (params.controller || 'Siemens SIMATIC S7-1518F-4 PN/DP').trim();
@@ -142,6 +153,8 @@ class PlcConnector {
       controller,
       protocol,
       host,
+      backup_host,
+      active_channel: 'main',
       port,
       endpoint,
       poll_ms: 1000,
@@ -153,31 +166,22 @@ class PlcConnector {
       ping_ms: null
     };
 
-    this.pushLog('OK', fNo, protocol, `Зарегистрирован промышленный узел ${name} (${controller} · ${host}:${port})`);
+    const chanInfo = backup_host ? ` (Основной: ${host}:${port}, Резерв: ${backup_host})` : ` (${host}:${port})`;
+    this.pushLog('OK', fNo, protocol, `Зарегистрирован промышленный узел ${name} [${controller}]${chanInfo}`);
     this.saveConfig();
 
     if (params.autoConnect) {
       const connRes = await this.setFurnaceConnection(fNo, true);
-      return {
-        ok: true,
-        furnace_no: fNo,
-        connected: Boolean(connRes.ok),
-        connect_error: connRes.ok ? null : connRes.error,
-        status: this.getStatus()
-      };
+      return { ok: connRes.ok, furnace_no: fNo, status: this.getStatus() };
     }
 
-    return {
-      ok: true,
-      furnace_no: fNo,
-      connected: false,
-      status: this.getStatus()
-    };
+    return { ok: true, furnace_no: fNo, status: this.getStatus() };
   }
 
   removeFurnace(furnaceNo) {
     const fNo = Number(furnaceNo);
     if (!this.furnaces[fNo]) return { ok: false, error: 'Узел печи не найден' };
+    this.stopModbusPolling(fNo);
     const title = this.furnaces[fNo].name || `ДСП-135 №${fNo}`;
     delete this.furnaces[fNo];
     this.saveConfig();
@@ -198,13 +202,13 @@ class PlcConnector {
         return;
       }
 
-      if (req.method === 'GET' && (req.url === '/api/v1/status' || req.url === '/status')) {
+      if (req.method === 'GET' && (req.url === '/api/v1/status' || req.url === '/status' || req.url === '/api/plc/status')) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(this.getStatus()));
         return;
       }
 
-      if (req.method === 'POST' && (req.url === '/api/v1/telemetry' || req.url === '/telemetry')) {
+      if (req.method === 'POST' && (req.url === '/api/v1/telemetry' || req.url === '/telemetry' || req.url === '/api/plc/telemetry')) {
         let body = '';
         req.on('data', chunk => {
           body += chunk.toString();
@@ -240,7 +244,7 @@ class PlcConnector {
 
     this.httpServer.listen(this.gatewayPort, '0.0.0.0', () => {
       this.gatewayRunning = true;
-      this.pushLog('INFO', 0, 'PROD-GW', `Промышленный шлюз АСУ ТП активен на 0.0.0.0:${this.gatewayPort}/api/v1/telemetry (STRICT REAL PLC)`);
+      this.pushLog('INFO', 0, 'PROD-GW', `Промышленный шлюз АСУ ТП активен на 0.0.0.0:${this.gatewayPort}/api/v1/telemetry`);
     });
   }
 
@@ -258,19 +262,21 @@ class PlcConnector {
 
     const temp_c = rawPacket.temp_c !== undefined
       ? Number(rawPacket.temp_c)
-      : (rawPacket.reg_40001 !== undefined ? Number(rawPacket.reg_40001) : undefined);
+      : (rawPacket.reg_40001 !== undefined ? Number(rawPacket.reg_40001) : (rawPacket['DB10.DBD0'] !== undefined ? Number(rawPacket['DB10.DBD0']) : undefined));
 
     const power_mw = rawPacket.power_mw !== undefined
       ? Number(rawPacket.power_mw)
-      : (rawPacket.reg_40003 !== undefined ? Number(rawPacket.reg_40003) / 10 : undefined);
+      : (rawPacket.reg_40003 !== undefined ? Number(rawPacket.reg_40003) / 10 : (rawPacket['DB10.DBD4'] !== undefined ? Number(rawPacket['DB10.DBD4']) : undefined));
 
     const t_min = rawPacket.t_min !== undefined
       ? Number(rawPacket.t_min)
-      : (rawPacket.reg_40005 !== undefined ? Number(rawPacket.reg_40005) / 10 : undefined);
+      : (rawPacket.reg_40005 !== undefined ? Number(rawPacket.reg_40005) / 10 : (rawPacket['DB10.DBD8'] !== undefined ? Number(rawPacket['DB10.DBD8']) : undefined));
 
     let stage = rawPacket.stage;
     if (!stage && rawPacket.stage_code && STAGE_CODE_MAP[rawPacket.stage_code]) {
       stage = STAGE_CODE_MAP[rawPacket.stage_code];
+    } else if (!stage && rawPacket.Stage_Code && STAGE_CODE_MAP[rawPacket.Stage_Code]) {
+      stage = STAGE_CODE_MAP[rawPacket.Stage_Code];
     }
 
     const normalized = {
@@ -295,7 +301,8 @@ class PlcConnector {
     unit.last_error = null;
     this.totalRxPackets += 1;
 
-    const summary = `${unit.name || 'ДСП №' + fNo} [${sourceIp}] <= T=${normalized.temp_c ?? '—'}°C, P=${normalized.power_mw ?? '—'}МВт, t=${normalized.t_min ?? '—'}мин${normalized.stage ? ' [' + normalized.stage + ']' : ''}`;
+    const channelTag = unit.backup_host ? ` [${unit.active_channel === 'backup' ? 'LAN 2' : 'LAN 1'}]` : '';
+    const summary = `${unit.name || 'ДСП №' + fNo}${channelTag} [${sourceIp}] <= T=${normalized.temp_c ?? '—'}°C, P=${normalized.power_mw ?? '—'}МВт, t=${normalized.t_min ?? '—'}мин${normalized.stage ? ' [' + normalized.stage + ']' : ''}`;
     this.pushLog('RX', fNo, normalized.protocol, summary);
 
     if (typeof this.onTelemetry === 'function') {
@@ -307,22 +314,137 @@ class PlcConnector {
 
   pushLog(dir, furnace_no, protocol, summary) {
     this.packetLog.unshift({
+      id: Date.now() + Math.random(),
       ts: new Date().toISOString(),
       dir,
-      furnace_no,
-      protocol,
+      furnace_no: Number(furnace_no) || 0,
+      protocol: protocol || 'NET',
       summary
     });
-    if (this.packetLog.length > 50) {
-      this.packetLog.length = 50;
+    if (this.packetLog.length > 250) {
+      this.packetLog.length = 250;
     }
   }
 
-  // Проверка физического TCP-соединения с контроллером ПЛК
-  testConnection(furnaceNo) {
+  clearLogs() {
+    this.packetLog = [];
+    return { ok: true };
+  }
+
+  // ==========================================================================
+  // Встроенный прямой драйвер Modbus TCP (чтение Holding Registers 40001..40010)
+  // ==========================================================================
+  startModbusPolling(furnaceNo) {
+    const fNo = Number(furnaceNo);
+    const unit = this.furnaces[fNo];
+    if (!unit || unit.protocol !== 'Modbus TCP' || !unit.connected) return;
+
+    this.stopModbusPolling(fNo);
+
+    const pollInterval = Math.max(500, unit.poll_ms || 1000);
+    const stepPoll = () => {
+      this.queryModbusUnit(fNo);
+    };
+
+    stepPoll();
+    this.modbusPollers[fNo] = setInterval(stepPoll, pollInterval);
+    this.pushLog('INFO', fNo, 'Modbus TCP', `Запущен прямой циклический опрос ПЛК (интервал: ${pollInterval} мс)`);
+  }
+
+  stopModbusPolling(furnaceNo) {
+    const fNo = Number(furnaceNo);
+    if (this.modbusPollers[fNo]) {
+      clearInterval(this.modbusPollers[fNo]);
+      delete this.modbusPollers[fNo];
+    }
+    if (this.modbusSockets[fNo]) {
+      this.modbusSockets[fNo].destroy();
+      delete this.modbusSockets[fNo];
+    }
+  }
+
+  queryModbusUnit(furnaceNo) {
+    const unit = this.furnaces[furnaceNo];
+    if (!unit || !unit.connected) return;
+
+    const currentHost = (unit.active_channel === 'backup' && unit.backup_host) ? unit.backup_host : unit.host;
+    const currentPort = Number(unit.port) || 502;
+
+    const socket = new net.Socket();
+    socket.setTimeout(1200);
+
+    const transId = (this.modbusTransId = (this.modbusTransId + 1) % 65535);
+
+    // ADU: TransID (2), Proto (2)=0, Len (2)=6, UnitID (1), Func (1)=0x03, Start (2)=0, Count (2)=10
+    const req = Buffer.alloc(12);
+    req.writeUInt16BE(transId, 0);
+    req.writeUInt16BE(0, 2);
+    req.writeUInt16BE(6, 4);
+    req.writeUInt8(furnaceNo, 6); // UnitID
+    req.writeUInt8(3, 7);         // FC 0x03
+    req.writeUInt16BE(0, 8);      // Start Address (40001 -> 0)
+    req.writeUInt16BE(10, 10);    // 10 registers
+
+    let settled = false;
+
+    socket.connect(currentPort, currentHost, () => {
+      socket.write(req);
+    });
+
+    socket.on('data', resp => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+
+      if (resp.length >= 9 && resp.readUInt16BE(0) === transId && resp.readUInt8(7) === 3) {
+        const byteCount = resp.readUInt8(8);
+        if (byteCount >= 16) {
+          const temp = resp.readUInt16BE(9);
+          const pwr = resp.readFloatBE(13);
+          const tMin = resp.readFloatBE(17);
+          const stageCode = resp.readUInt16BE(21);
+
+          this.ingestTelemetryPacket({
+            furnace_no: furnaceNo,
+            temp_c: temp,
+            power_mw: Math.round(pwr * 10) / 10,
+            t_min: Math.round(tMin * 10) / 10,
+            stage_code: stageCode,
+            protocol: 'Modbus TCP'
+          }, currentHost);
+        }
+      }
+    });
+
+    const handleFail = (errMsg) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+
+      // Проверка переключения на резервный канал
+      if (unit.backup_host && unit.active_channel === 'main') {
+        unit.active_channel = 'backup';
+        this.pushLog('WARN', furnaceNo, 'REDUNDANCY', `Сбой основного канала (${unit.host}:${currentPort}). Автоматическое переключение на РЕЗЕРВ (${unit.backup_host})`);
+      } else if (unit.backup_host && unit.active_channel === 'backup') {
+        this.pushLog('ERR', furnaceNo, 'Modbus TCP', `Резервный канал (${unit.backup_host}) также недоступен: ${errMsg}`);
+      }
+    };
+
+    socket.on('timeout', () => handleFail('Таймаут Modbus ответа (1200 мс)'));
+    socket.on('error', err => handleFail(err.code || err.message));
+  }
+
+  // ==========================================================================
+  // Сетевая диагностика и резервирование каналов связи (LAN 1 / LAN 2)
+  // ==========================================================================
+  testConnection(furnaceNo, forceBackup = false) {
     const fNo = Number(furnaceNo) || 1;
     const unit = this.furnaces[fNo];
     if (!unit) return Promise.resolve({ ok: false, error: 'Неизвестный номер печи' });
+
+    const targetHost = forceBackup ? (unit.backup_host || unit.host) : unit.host;
+    const targetPort = Number(unit.port) || 4840;
+    const channelName = forceBackup ? 'LAN 2 (Резерв)' : 'LAN 1 (Основной)';
 
     const start = Date.now();
     return new Promise(resolve => {
@@ -338,14 +460,14 @@ class PlcConnector {
           unit.ping_ms = Math.max(1, rtt);
           unit.last_error = null;
           if (unit.connected) unit.status = 'ONLINE';
-          this.pushLog('OK', fNo, unit.protocol, `TCP-соединение с ПЛК ${unit.name} (${unit.host}:${unit.port}) подтверждено (${unit.ping_ms} мс)`);
-          resolve({ ok: true, furnace_no: fNo, ping_ms: unit.ping_ms, endpoint: `${unit.host}:${unit.port}` });
+          this.pushLog('OK', fNo, unit.protocol, `Связь с ${channelName} [${targetHost}:${targetPort}] подтверждена (${unit.ping_ms} мс)`);
+          resolve({ ok: true, furnace_no: fNo, ping_ms: unit.ping_ms, endpoint: `${targetHost}:${targetPort}`, channel: channelName });
         } else {
           unit.ping_ms = null;
           unit.status = unit.connected ? 'OFFLINE' : 'DISCONNECTED';
           unit.last_error = errText || 'Таймаут соединения';
-          this.pushLog('ERR', fNo, unit.protocol, `${unit.name} (${unit.host}:${unit.port}) недоступен: ${unit.last_error}`);
-          resolve({ ok: false, furnace_no: fNo, error: unit.last_error, endpoint: `${unit.host}:${unit.port}` });
+          this.pushLog('ERR', fNo, unit.protocol, `${channelName} [${targetHost}:${targetPort}] недоступен: ${unit.last_error}`);
+          resolve({ ok: false, furnace_no: fNo, error: unit.last_error, endpoint: `${targetHost}:${targetPort}`, channel: channelName });
         }
       };
 
@@ -355,7 +477,7 @@ class PlcConnector {
       socket.once('error', err => finish(false, err.code || err.message));
 
       try {
-        socket.connect(Number(unit.port) || 4840, unit.host || '192.168.10.11');
+        socket.connect(targetPort, targetHost);
       } catch (e) {
         finish(false, e.message);
       }
@@ -368,14 +490,30 @@ class PlcConnector {
     if (!unit) return { ok: false, error: 'Неизвестный номер печи' };
 
     if (!shouldConnect) {
+      this.stopModbusPolling(fNo);
       unit.connected = false;
       unit.status = 'DISCONNECTED';
       unit.ping_ms = null;
+      unit.active_channel = 'main';
       this.pushLog('INFO', fNo, unit.protocol, `${unit.name} отключена оператором от поста мониторинга`);
       return { ok: true, connected: false, furnace_no: fNo, status: this.getStatus() };
     }
 
-    const probe = await this.testConnection(fNo);
+    // Проверяем основной канал
+    let probe = await this.testConnection(fNo, false);
+    unit.active_channel = 'main';
+
+    // Если основной недоступен, но задан резервный — пробуем резерв
+    if (!probe.ok && unit.backup_host) {
+      this.pushLog('WARN', fNo, 'REDUNDANCY', `Основной канал LAN 1 (${unit.host}) недоступен. Проверка резервного LAN 2 (${unit.backup_host})...`);
+      const backupProbe = await this.testConnection(fNo, true);
+      if (backupProbe.ok) {
+        probe = backupProbe;
+        unit.active_channel = 'backup';
+        this.pushLog('OK', fNo, 'REDUNDANCY', `Подключено через РЕЗЕРВНЫЙ канал LAN 2 (${unit.backup_host})`);
+      }
+    }
+
     if (!probe.ok) {
       unit.connected = false;
       unit.status = 'OFFLINE';
@@ -390,12 +528,20 @@ class PlcConnector {
 
     unit.connected = true;
     unit.status = 'STANDBY';
-    this.pushLog('OK', fNo, unit.protocol, `${unit.name} подключена к промышленному посту мониторинга (${unit.host}:${unit.port})`);
+    const activeHost = unit.active_channel === 'backup' ? unit.backup_host : unit.host;
+    this.pushLog('OK', fNo, unit.protocol, `${unit.name} подключена (${unit.active_channel === 'backup' ? 'LAN 2' : 'LAN 1'} · ${activeHost}:${unit.port})`);
+
+    // Если протокол Modbus TCP — активируем циклический опрос
+    if (unit.protocol === 'Modbus TCP') {
+      this.startModbusPolling(fNo);
+    }
+
     return {
       ok: true,
       connected: true,
       furnace_no: fNo,
       ping_ms: probe.ping_ms,
+      active_channel: unit.active_channel,
       status: this.getStatus()
     };
   }
@@ -412,6 +558,7 @@ class PlcConnector {
         if (src.controller) f.controller = String(src.controller).trim();
         if (src.protocol) f.protocol = src.protocol;
         if (src.host) f.host = src.host.trim();
+        if (src.backup_host !== undefined) f.backup_host = src.backup_host.trim();
         if (src.port) f.port = Number(src.port) || 4840;
         if (src.endpoint) f.endpoint = src.endpoint.trim();
         if (src.poll_ms) f.poll_ms = Math.max(200, Number(src.poll_ms) || 1000);

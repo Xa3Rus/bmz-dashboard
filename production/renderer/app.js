@@ -68,6 +68,13 @@ function setup3DControls() {
     btnRot.classList.toggle('active', isRotating);
   });
 
+  const btnSensors = document.getElementById('btnSensors');
+
+  btnSensors?.addEventListener('click', () => {
+    const isShowing = furnace3D.toggleSensors();
+    btnSensors.classList.toggle('active', isShowing);
+  });
+
   btnReset?.addEventListener('click', () => {
     furnace3D.resetCamera();
   });
@@ -850,6 +857,7 @@ async function initPlcView() {
     const controller = document.getElementById('newFurnaceController')?.value.trim() || 'Siemens SIMATIC S7-1518F-4 PN/DP';
     const protocol = document.getElementById('newFurnaceProtocol')?.value || 'OPC UA';
     const host = document.getElementById('newFurnaceHost')?.value.trim() || '192.168.10.11';
+    const backup_host = document.getElementById('newFurnaceBackupHost')?.value.trim() || '';
     const port = Number(document.getElementById('newFurnacePort')?.value) || 4840;
     const autoConnect = Boolean(document.getElementById('newFurnaceAutoConnect')?.checked);
 
@@ -865,6 +873,7 @@ async function initPlcView() {
       controller,
       protocol,
       host,
+      backup_host,
       port,
       autoConnect
     });
@@ -890,6 +899,8 @@ async function initPlcView() {
       await loadMelts();
     }
   });
+
+  setupPlcLogControls();
 
   // Сохранение настроек IP / портов / узлов всех печей
   document.getElementById('btnSavePlcConfig')?.addEventListener('click', async () => {
@@ -979,11 +990,20 @@ function renderPlcUnitsCards(plc) {
         </label>
 
         <div class="plc-field-grid">
-          <label>IP-адрес ПЛК / Шлюза
+          <label>Основной IP (LAN 1)
             <input type="text" class="plc-inp-host" data-fno="${fNo}" value="${f.host}">
           </label>
           <label>Порт TCP
             <input type="number" class="plc-inp-port" data-fno="${fNo}" value="${f.port}">
+          </label>
+        </div>
+
+        <div class="plc-field-grid">
+          <label>Резервный IP (LAN 2, опция)
+            <input type="text" class="plc-inp-backuphost" data-fno="${fNo}" value="${f.backup_host || ''}" placeholder="192.168.20.11">
+          </label>
+          <label>Канал связи
+            <div class="plc-chan-badge ${f.active_channel === 'backup' ? 'backup' : 'main'}">${f.backup_host ? (f.active_channel === 'backup' ? 'LAN 2 (РЕЗЕРВ)' : 'LAN 1 (ОСНОВ)') : 'LAN 1'}</div>
           </label>
         </div>
 
@@ -1005,9 +1025,13 @@ function renderPlcUnitsCards(plc) {
           >
             ${isConn ? `ОТКЛЮЧИТЬ ПЕЧЬ №${fNo}` : `ПОДКЛЮЧИТЬ ПЕЧЬ №${fNo}`}
           </button>
-          <button class="plc-test-btn" data-test-furnace="${fNo}" title="Проверить доступность узла по TCP">
-            ТЕСТ КАНАЛА
+          <button class="plc-test-btn" data-test-furnace="${fNo}" title="Проверить доступность основного IP по TCP">
+            ТЕСТ LAN 1
           </button>
+          ${f.backup_host ? `
+          <button class="plc-test-btn backup" data-testbackup-furnace="${fNo}" title="Проверить доступность резервного IP (LAN 2)">
+            ТЕСТ LAN 2
+          </button>` : ''}
         </div>
       </div>
     `;
@@ -1058,17 +1082,32 @@ function renderPlcUnitsCards(plc) {
     });
   });
 
-  grid.querySelectorAll('.plc-test-btn').forEach(btn => {
+  grid.querySelectorAll('.plc-test-btn[data-test-furnace]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const fNo = Number(btn.dataset.testFurnace);
       const furnaces = collectPlcCardsConfig();
       await call('plc:config', { furnaces });
-      btn.textContent = 'ТЕСТ TCP...';
+      btn.textContent = 'ТЕСТ LAN 1...';
       const res = await call('plc:test', { furnace_no: fNo });
-      btn.textContent = res.ok ? `OK (${res.ping_ms} МС)` : 'НЕТ ОТВЕТА';
+      btn.textContent = res.ok ? `OK (${res.ping_ms} МС)` : 'ОШИБКА';
       await refreshPlcStatusOnly(false);
       setTimeout(() => {
-        btn.textContent = 'ТЕСТ КАНАЛА';
+        btn.textContent = 'ТЕСТ LAN 1';
+      }, 2200);
+    });
+  });
+
+  grid.querySelectorAll('.plc-test-btn[data-testbackup-furnace]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fNo = Number(btn.dataset.testbackupFurnace);
+      const furnaces = collectPlcCardsConfig();
+      await call('plc:config', { furnaces });
+      btn.textContent = 'ТЕСТ LAN 2...';
+      const res = await call('plc:testBackup', { furnace_no: fNo });
+      btn.textContent = res.ok ? `OK (${res.ping_ms} МС)` : 'ОШИБКА';
+      await refreshPlcStatusOnly(false);
+      setTimeout(() => {
+        btn.textContent = 'ТЕСТ LAN 2';
       }, 2200);
     });
   });
@@ -1081,18 +1120,54 @@ function collectPlcCardsConfig() {
     if (!fNo) return;
     const protoEl = card.querySelector(`.plc-inp-proto[data-fno="${fNo}"]`);
     const hostEl = card.querySelector(`.plc-inp-host[data-fno="${fNo}"]`);
+    const backupHostEl = card.querySelector(`.plc-inp-backuphost[data-fno="${fNo}"]`);
     const portEl = card.querySelector(`.plc-inp-port[data-fno="${fNo}"]`);
     const epEl = card.querySelector(`.plc-inp-endpoint[data-fno="${fNo}"]`);
     if (protoEl && hostEl && portEl && epEl) {
       furnaces[fNo] = {
         protocol: protoEl.value,
         host: hostEl.value,
+        backup_host: backupHostEl ? backupHostEl.value.trim() : '',
         port: Number(portEl.value) || 4580,
         endpoint: epEl.value
       };
     }
   });
   return furnaces;
+}
+
+let activePlcLogFilter = 'all';
+
+function setupPlcLogControls() {
+  const filterSelect = document.getElementById('plcLogFilter');
+  if (filterSelect) {
+    filterSelect.addEventListener('change', e => {
+      activePlcLogFilter = e.target.value;
+      refreshPlcStatusOnly(false);
+    });
+  }
+
+  document.getElementById('btnClearPlcLogs')?.addEventListener('click', async () => {
+    await call('plc:clearLogs');
+    const logEl = document.getElementById('plcPacketLog');
+    if (logEl) logEl.innerHTML = '<div class="plc-log-line info">Терминал очищен оператором. Ожидание событий...</div>';
+  });
+
+  document.getElementById('btnExportPlcLogs')?.addEventListener('click', async () => {
+    const plc = await call('plc:status');
+    if (!plc || !Array.isArray(plc.packetLog) || !plc.packetLog.length) {
+      alert('Журнал ПЛК пуст');
+      return;
+    }
+    const lines = plc.packetLog.map(i => `[${i.ts}] [${i.dir}] [${i.protocol}] [Печь №${i.furnace_no}] ${i.summary}`);
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `plc-log-bmz-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
 }
 
 function updatePlcRuntimeWidgets(plc) {
@@ -1104,6 +1179,30 @@ function updatePlcRuntimeWidgets(plc) {
 
   const rxEl = document.getElementById('plcTotalRx');
   if (rxEl) rxEl.textContent = fmtNum(plc.totalRxPackets || 0);
+
+  // Рендерим терминал кадров обмена с учётом активного фильтра
+  const logEl = document.getElementById('plcPacketLog');
+  if (logEl && Array.isArray(plc.packetLog)) {
+    const filtered = plc.packetLog.filter(item => {
+      if (activePlcLogFilter === 'all') return true;
+      return item.dir === activePlcLogFilter;
+    });
+
+    if (!filtered.length) {
+      logEl.innerHTML = `<div class="plc-log-line info">Нет событий по выбранному фильтру «${activePlcLogFilter}»...</div>`;
+    } else {
+      logEl.innerHTML = filtered.map(item => {
+        const timeStr = new Date(item.ts).toLocaleTimeString('ru-RU');
+        return `
+          <div class="plc-log-line ${item.dir}">
+            <span class="plc-log-ts">[${timeStr}]</span>
+            <span class="plc-log-proto">[${item.protocol}]</span>
+            <span class="plc-log-msg">${item.summary}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
 
   const urlEl = document.getElementById('plcGatewayUrl');
   if (urlEl) urlEl.textContent = `POST ${plc.gatewayUrl}`;
@@ -1144,25 +1243,6 @@ function updatePlcRuntimeWidgets(plc) {
       connBtn.textContent = isConn ? `ОТКЛЮЧИТЬ ПЕЧЬ №${fNo}` : `ПОДКЛЮЧИТЬ ПЕЧЬ №${fNo}`;
     }
   });
-
-  // Рендерим терминал кадров обмена
-  const logEl = document.getElementById('plcPacketLog');
-  if (logEl && Array.isArray(plc.packetLog)) {
-    if (!plc.packetLog.length) {
-      logEl.innerHTML = `<div class="plc-log-line info">Ожидание пакетов телеметрии на порту ${plc.gatewayPort}...</div>`;
-    } else {
-      logEl.innerHTML = plc.packetLog.map(item => {
-        const timeStr = new Date(item.ts).toLocaleTimeString('ru-RU');
-        return `
-          <div class="plc-log-line ${item.dir}">
-            <span class="plc-log-ts">[${timeStr}]</span>
-            <span class="plc-log-proto">[${item.protocol}]</span>
-            <span class="plc-log-msg">${item.summary}</span>
-          </div>
-        `;
-      }).join('');
-    }
-  }
 }
 
 // 9. Поиск по словарю

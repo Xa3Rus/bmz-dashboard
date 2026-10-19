@@ -47,9 +47,18 @@ export class Furnace3D {
     this.targetRoofSwing = 0;
     this.targetElectrodeY = 0;
 
+    this.showSensors = false;
+    this.sensorPins = [
+      { id: 'roof', title: 'Свод печи / Газоход', pos: new THREE.Vector3(0.0, 3.4, 0.0), render: p => `${Math.round((p.temp_c || 1580) * 0.45)} °C · 42 Па` },
+      { id: 'water', title: 'Охлаждение кожуха', pos: new THREE.Vector3(3.2, 1.2, 0.8), render: p => `1840 м³/ч · ΔT 8.5 °C` },
+      { id: 'electrodes', title: 'Электроды (3Ф)', pos: new THREE.Vector3(0.0, 5.2, -1.8), render: p => `${p.power_mw ? Math.round(p.power_mw * 1.15) : 0} кА · ${(p.power_mw || 0).toFixed(1)} МВт` },
+      { id: 'ebt', title: 'Эркер выпуска (EBT)', pos: new THREE.Vector3(0.0, -0.6, 3.4), render: p => `Шибер: ${p.stage === 'Выпуск' ? 'ОТКРЫТ' : 'ЗАКРЫТ'} · ${p.temp_c || 1610} °C` }
+    ];
+
     this.initScene();
     this.initProceduralTextures();
     this.initMaterials();
+    this.initSensorOverlay();
     this.loadBlenderGlbModel('models/dsp135.glb');
     this.setupEvents();
 
@@ -57,6 +66,67 @@ export class Furnace3D {
     this.startTime = performance.now();
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
+  }
+
+  initSensorOverlay() {
+    this.sensorOverlay = document.createElement('div');
+    this.sensorOverlay.className = 'sensor-pin-overlay';
+    this.sensorOverlay.style.display = 'none';
+    this.container.style.position = 'relative';
+    this.container.appendChild(this.sensorOverlay);
+
+    this.sensorPinElements = this.sensorPins.map(pin => {
+      const el = document.createElement('div');
+      el.className = 'sensor-pin';
+      el.innerHTML = `
+        <div class="sensor-pin-dot"></div>
+        <div class="sensor-pin-card">
+          <div class="s-title">${pin.title}</div>
+          <div class="s-val" id="sVal-${pin.id}">—</div>
+        </div>
+      `;
+      this.sensorOverlay.appendChild(el);
+      return { pin, el, valEl: el.querySelector(`#sVal-${pin.id}`) };
+    });
+  }
+
+  toggleSensors() {
+    this.showSensors = !this.showSensors;
+    if (this.sensorOverlay) {
+      this.sensorOverlay.style.display = this.showSensors ? 'block' : 'none';
+    }
+    return this.showSensors;
+  }
+
+  updateSensorOverlayPositions() {
+    if (!this.showSensors || !this.camera || !this.renderer) return;
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    if (!width || !height) return;
+
+    const tempV = new THREE.Vector3();
+    this.sensorPinElements.forEach(item => {
+      tempV.copy(item.pin.pos);
+      if (this.tiltPivot && item.pin.id !== 'roof' && item.pin.id !== 'electrodes') {
+        tempV.applyEuler(this.tiltPivot.rotation);
+      }
+      tempV.project(this.camera);
+
+      // Проверка видимости перед камерой
+      if (tempV.z > 1.0) {
+        item.el.style.opacity = '0';
+        return;
+      }
+
+      item.el.style.opacity = '1';
+      const x = (tempV.x * 0.5 + 0.5) * width;
+      const y = (-(tempV.y * 0.5) + 0.5) * height;
+      item.el.style.left = `${x}px`;
+      item.el.style.top = `${y}px`;
+      if (item.valEl) {
+        item.valEl.textContent = item.pin.render(this.params);
+      }
+    });
   }
 
   // ============================================================================
@@ -816,6 +886,8 @@ export class Furnace3D {
       const pulse = 1.0 + Math.sin(time * 4.5) * 0.006;
       this.meltSurface.scale.set(pulse, 1, pulse);
     }
+
+    this.updateSensorOverlayPositions();
 
     this.renderer.render(this.scene, this.camera);
   }

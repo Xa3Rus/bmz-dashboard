@@ -68,6 +68,20 @@ function setup3DControls() {
     btnRot.classList.toggle('active', isRotating);
   });
 
+  const btnSensors = document.getElementById('btnSensors');
+  btnSensors?.addEventListener('click', () => {
+    const isShowing = furnace3D.toggleSensors();
+    btnSensors.classList.toggle('active', isShowing);
+  });
+
+  const btnSound = document.getElementById('btnSound');
+  btnSound?.addEventListener('click', () => {
+    if (!window.furnaceSound) return;
+    const isAudioOn = window.furnaceSound.toggle();
+    btnSound.classList.toggle('sound-on', isAudioOn);
+    btnSound.textContent = isAudioOn ? 'Звук: ВКЛ' : 'Звук: ВЫКЛ';
+  });
+
   btnReset?.addEventListener('click', () => {
     furnace3D.resetCamera();
   });
@@ -374,15 +388,19 @@ async function tickLive(advanceSimulation = true) {
   document.getElementById('paramGrade').textContent = melt.steel_grade;
   document.getElementById('paramOperator').textContent = melt.operator;
 
-  // 3. Синхронизация 3D
+  // 3. Синхронизация 3D и звукового движка
   if (furnace3D && !previewStageOverride) {
-    furnace3D.update({
+    const tData = {
       temp_c: last.temp_c,
       power_mw: last.power_mw,
       stage: currentStage,
       t_min: last.t_min,
       duration_min: melt.duration_min
-    });
+    };
+    furnace3D.update(tData);
+    if (window.furnaceSound) {
+      window.furnaceSound.update(tData);
+    }
   }
 
   // 4. Последние события выбранной печи
@@ -871,6 +889,8 @@ async function initPlcView() {
     }
   });
 
+  setupPlcLogControls();
+
   // Переключение режима источника телеметрии
   document.querySelectorAll('#plcModeSelector .plc-mode-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1185,6 +1205,40 @@ function collectPlcCardsConfig() {
   return furnaces;
 }
 
+let activePlcLogFilter = 'all';
+
+function setupPlcLogControls() {
+  const filterSelect = document.getElementById('plcLogFilter');
+  if (filterSelect) {
+    filterSelect.addEventListener('change', e => {
+      activePlcLogFilter = e.target.value;
+      refreshPlcStatusOnly(false);
+    });
+  }
+
+  document.getElementById('btnClearPlcLogs')?.addEventListener('click', async () => {
+    await call('plc:clearLogs');
+    const logEl = document.getElementById('plcPacketLog');
+    if (logEl) logEl.innerHTML = '<div class="plc-log-line info">Терминал очищен оператором. Ожидание событий...</div>';
+  });
+
+  document.getElementById('btnExportPlcLogs')?.addEventListener('click', async () => {
+    const plc = await call('plc:status');
+    if (!plc || !Array.isArray(plc.packetLog) || !plc.packetLog.length) {
+      alert('Журнал ПЛК пуст');
+      return;
+    }
+    const lines = plc.packetLog.map(i => `[${i.ts}] [${i.dir}] [${i.protocol}] [Печь №${i.furnace_no}] ${i.summary}`);
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `plc-log-bmz-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
 function updatePlcRuntimeWidgets(plc) {
   if (!plc) return;
 
@@ -1235,13 +1289,18 @@ function updatePlcRuntimeWidgets(plc) {
     }
   });
 
-  // Рендерим терминал кадров обмена
+  // Рендерим терминал кадров обмена с учётом активного фильтра
   const logEl = document.getElementById('plcPacketLog');
   if (logEl && Array.isArray(plc.packetLog)) {
-    if (!plc.packetLog.length) {
-      logEl.innerHTML = `<div class="plc-log-line info">Ожидание пакетов телеметрии на порту ${plc.gatewayPort}...</div>`;
+    const filtered = plc.packetLog.filter(item => {
+      if (activePlcLogFilter === 'all') return true;
+      return item.dir === activePlcLogFilter;
+    });
+
+    if (!filtered.length) {
+      logEl.innerHTML = `<div class="plc-log-line info">Нет событий по выбранному фильтру «${activePlcLogFilter}»...</div>`;
     } else {
-      logEl.innerHTML = plc.packetLog.map(item => {
+      logEl.innerHTML = filtered.map(item => {
         const timeStr = new Date(item.ts).toLocaleTimeString('ru-RU');
         return `
           <div class="plc-log-line ${item.dir}">

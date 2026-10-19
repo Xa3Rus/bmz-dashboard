@@ -198,6 +198,8 @@
                   <button class="hud-btn" id="btnShell">Корпус</button>
                   <button class="hud-btn" id="btnThermal">Термокарта</button>
                   <button class="hud-btn" id="btnWireframe">Каркас</button>
+                  <button class="hud-btn" id="btnSensors" title="Отображение меток датчиков в 3D">Датчики 3D</button>
+                  <button class="hud-btn sound-btn" id="btnSound" title="Звуковая картина плавки (Web Audio API)">Звук: ВЫКЛ</button>
                   <button class="hud-btn" id="btnRotate">Вращение</button>
                   <button class="hud-btn" id="btnResetCam">Сброс</button>
                 </div>
@@ -563,9 +565,19 @@
             <div class="panel-head">
               <div>
                 <div class="panel-title">МОНИТОР ПРОТОКОЛА ОБМЕНА (УРОВЕНЬ 1 ➔ УРОВЕНЬ 2)</div>
-                <div class="panel-sub">Журнал входящих кадров телеметрии и диагностики TCP-соединений</div>
+                <div class="panel-sub">Журнал входящих кадров телеметрии, эмуляции и диагностики TCP-соединений</div>
               </div>
-              <span class="live-pill" id="plcMonitorState">ОНЛАЙН</span>
+              <div class="plc-log-actions">
+                <select id="plcLogFilter" class="select-styled select-sm">
+                  <option value="all">Все события (Log)</option>
+                  <option value="RX">Только телеметрия (RX)</option>
+                  <option value="OK">Успешные связи (OK)</option>
+                  <option value="ERR">Ошибки каналов (ERR)</option>
+                  <option value="WARN">Резерв LAN 2 (WARN)</option>
+                </select>
+                <button class="btn-secondary btn-sm" id="btnExportPlcLogs" title="Экспорт лога в TXT">СКАЧАТЬ ЛОГ</button>
+                <button class="btn-secondary btn-sm" id="btnClearPlcLogs" title="Очистить экранный терминал">ОЧИСТИТЬ</button>
+              </div>
             </div>
 
             <div class="plc-log-terminal" id="plcPacketLog">
@@ -807,6 +819,7 @@
   </div>
 
   <script src="../../node_modules/chart.js/dist/chart.umd.js"></script>
+  <script src="furnaceSound.js"></script>
   <script type="module">
     import { Furnace3D } from './furnace3d.js';
     window.Furnace3D = Furnace3D;

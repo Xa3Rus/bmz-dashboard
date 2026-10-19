@@ -195,6 +195,7 @@
                   <button class="hud-btn" id="btnShell">Корпус</button>
                   <button class="hud-btn" id="btnThermal">Термокарта</button>
                   <button class="hud-btn" id="btnWireframe">Каркас</button>
+                  <button class="hud-btn" id="btnSensors" title="Отображение меток датчиков в 3D">Датчики 3D</button>
                   <button class="hud-btn" id="btnRotate">Вращение</button>
                   <button class="hud-btn" id="btnResetCam">Сброс</button>
                 </div>
@@ -459,8 +460,11 @@
                 <option value="Siemens S7comm">Siemens S7comm</option>
               </select>
             </label>
-            <label>IP-адрес ПЛК в сети цеха
+            <label>IP-адрес ПЛК (Основной LAN 1)
               <input type="text" id="newFurnaceHost" value="192.168.10.11" placeholder="192.168.10.11">
+            </label>
+            <label>Резервный IP (LAN 2, опция)
+              <input type="text" id="newFurnaceBackupHost" value="" placeholder="Напр.: 192.168.20.11">
             </label>
             <label>TCP-порт
               <input type="number" id="newFurnacePort" value="4840" min="1" max="65535">
@@ -549,9 +553,19 @@ Content-Type: application/json
             <div class="panel-head">
               <div>
                 <div class="panel-title">МОНИТОР ПРОТОКОЛА ОБМЕНА (УРОВЕНЬ 1 ➔ УРОВЕНЬ 2)</div>
-                <div class="panel-sub">Журнал входящих кадров от реальных ПЛК и диагностики физического TCP-соединения</div>
+                <div class="panel-sub">Журнал входящих кадров, диагностики сокетов и резервирования каналов связи</div>
               </div>
-              <span class="live-pill" id="plcMonitorState">ОНЛАЙН</span>
+              <div class="plc-log-actions">
+                <select id="plcLogFilter" class="select-styled select-sm">
+                  <option value="all">Все события (Log)</option>
+                  <option value="RX">Только телеметрия (RX)</option>
+                  <option value="OK">Успешные связи (OK)</option>
+                  <option value="ERR">Ошибки каналов (ERR)</option>
+                  <option value="WARN">Резерв LAN 2 (WARN)</option>
+                </select>
+                <button class="btn-secondary btn-sm" id="btnExportPlcLogs" title="Экспорт лога в TXT">СКАЧАТЬ ЛОГ</button>
+                <button class="btn-secondary btn-sm" id="btnClearPlcLogs" title="Очистить экранный терминал">ОЧИСТИТЬ</button>
+              </div>
             </div>
 
             <div class="plc-log-terminal" id="plcPacketLog" style="height: 315px;">

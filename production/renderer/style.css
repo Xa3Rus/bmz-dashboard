@@ -700,6 +700,93 @@ body {
   border-color: var(--accent);
 }
 
+.hud-btn.sound-on {
+  border-color: var(--ok) !important;
+  color: var(--ok) !important;
+  background: var(--ok-bg) !important;
+}
+
+/* 3D Интерактивные датчики (HTML Pins & Tooltips over Canvas) */
+.sensor-pin-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.sensor-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 10;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.sensor-pin:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.sensor-pin-dot {
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(224, 90, 0, 0.8), 0 0 4px #000;
+  animation: sensorPulse 2s infinite ease-in-out;
+}
+
+@keyframes sensorPulse {
+  0% { box-shadow: 0 0 4px rgba(224, 90, 0, 0.6); }
+  50% { box-shadow: 0 0 14px rgba(224, 90, 0, 1), 0 0 6px #fff; }
+  100% { box-shadow: 0 0 4px rgba(224, 90, 0, 0.6); }
+}
+
+.sensor-pin-card {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(22, 23, 25, 0.94);
+  border: 1px solid var(--border-light);
+  border-top: 2px solid var(--accent);
+  border-radius: 4px;
+  padding: 6px 9px;
+  font-family: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+  opacity: 0.96;
+}
+
+.sensor-pin-card .s-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.sensor-pin-card .s-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.sensor-pin-card .s-val span {
+  color: var(--cyan-light);
+  font-weight: 600;
+  font-size: 10px;
+  margin-left: 2px;
+}
+
 /* ==========================================================================
    Датчики и параметры (Gauges & Telemetry List)
    ========================================================================== */
@@ -1798,10 +1885,25 @@ body {
   word-break: break-word;
 }
 
+.plc-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select-sm {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  height: 28px !important;
+}
+
 .plc-log-line.RX .plc-log-proto { color: var(--ok); }
 .plc-log-line.ERR .plc-log-proto,
 .plc-log-line.ERR .plc-log-msg { color: var(--crit); }
 .plc-log-line.OK .plc-log-proto { color: var(--cyan-light); }
+.plc-log-line.WARN .plc-log-proto,
+.plc-log-line.WARN .plc-log-msg { color: var(--accent); }
+.plc-log-line.INFO .plc-log-proto { color: var(--text-muted); }
 
 .plc-map-tbl code {
   font-family: 'Consolas', 'Courier New', monospace;

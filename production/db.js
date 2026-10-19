@@ -304,6 +304,12 @@ function api(method, args = {}) {
     case 'plc:remove': {
       return plcConnector.removeFurnace(args.furnace_no);
     }
+    case 'plc:clearLogs': {
+      return plcConnector.clearLogs();
+    }
+    case 'plc:testBackup': {
+      return plcConnector.testConnection(args.furnace_no, true);
+    }
     default:
       throw new Error('Unknown API method: ' + method);
   }

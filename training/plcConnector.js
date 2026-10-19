@@ -381,15 +381,21 @@ class PlcConnector {
 
   pushLog(dir, furnace_no, protocol, summary) {
     this.packetLog.unshift({
+      id: Date.now() + Math.random(),
       ts: new Date().toISOString(),
       dir,
-      furnace_no,
-      protocol,
+      furnace_no: Number(furnace_no) || 0,
+      protocol: protocol || 'NET',
       summary
     });
-    if (this.packetLog.length > 40) {
-      this.packetLog.length = 40;
+    if (this.packetLog.length > 250) {
+      this.packetLog.length = 250;
     }
+  }
+
+  clearLogs() {
+    this.packetLog = [];
+    return { ok: true };
   }
 
   testConnection(furnaceNo) {
