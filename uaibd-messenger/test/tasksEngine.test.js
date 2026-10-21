@@ -10,6 +10,7 @@ const {
     renderReportBlock,
     renderTasks,
     bindTaskEvents,
+    formatDeadline,
     TasksModule
 } = require('../renderer/tasks');
 
@@ -198,6 +199,68 @@ describe('Task Board Logic & Role Actions', () => {
 
         assert.strictEqual(clickedAction, 'take_in_progress');
         assert.strictEqual(clickedTaskId, 'task-999');
+    });
+
+    test('formatDeadline handles invalid or malformed date strings safely', () => {
+        const nullHtml = formatDeadline(null);
+        assert.ok(nullHtml.includes('не указан'));
+
+        const invalidHtml = formatDeadline('not-a-valid-date');
+        assert.ok(!invalidHtml.includes('NaN'));
+        assert.ok(invalidHtml.includes('not-a-valid-date'));
+    });
+
+    test('renderReportBlock handles null and undefined items in report attachments safely', () => {
+        const report = {
+            id: 'rep-edge',
+            task_id: 'task-102',
+            report_text: 'Отчет с поврежденными вложениями',
+            attachments: [
+                null,
+                undefined,
+                { name: 'valid_log.txt', sizeFormatted: '1.5 KB', url: 'https://files.bmz/valid.txt', icon: 'text' }
+            ]
+        };
+        const html = renderReportBlock(report, 'chief');
+        assert.ok(html.includes('valid_log.txt'));
+        assert.ok(html.includes('1.5 KB'));
+    });
+
+    test('bindTaskEvents uses fallback precedence for submit report callbacks without duplicate invocations', () => {
+        let clickCalls = 0;
+        let submitCalls = 0;
+
+        const fakeButton = {
+            tagName: 'BUTTON',
+            classList: {
+                contains(cls) { return cls === 'btn-submit-report'; }
+            },
+            getAttribute(attr) {
+                if (attr === 'data-task-id') return 'task-555';
+                if (attr === 'data-action') return 'submit_report';
+                return null;
+            },
+            closest(selector) {
+                if (selector === 'button') return fakeButton;
+                return null;
+            }
+        };
+
+        let containerListener = null;
+        const fakeContainer = {
+            addEventListener(event, listener) {
+                if (event === 'click') containerListener = listener;
+            }
+        };
+
+        bindTaskEvents({ tasksContainer: fakeContainer }, {
+            onSubmitReportClick() { clickCalls++; },
+            onSubmitReport() { submitCalls++; }
+        });
+
+        containerListener({ target: fakeButton, preventDefault() {} });
+        assert.strictEqual(clickCalls, 1);
+        assert.strictEqual(submitCalls, 0); // fallback precedence prevents duplicate call
     });
 
     test('exports TasksModule with all required interfaces', () => {

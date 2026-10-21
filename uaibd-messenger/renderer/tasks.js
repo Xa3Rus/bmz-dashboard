@@ -137,9 +137,13 @@
             return '<span class="task-meta-item meta-due-date">📅 Срок: не указан</span>';
         }
 
+        const target = new Date(dueDate);
+        if (isNaN(target.getTime())) {
+            return `<span class="task-meta-item meta-due-date">📅 Срок: ${escapeHtml(dueDate)}</span>`;
+        }
+
         const now = new Date();
         now.setHours(0, 0, 0, 0);
-        const target = new Date(dueDate);
         target.setHours(0, 0, 0, 0);
 
         const diffTime = target.getTime() - now.getTime();
@@ -198,22 +202,25 @@
         // Attachments
         let attachmentsHtml = '';
         if (Array.isArray(report.attachments) && report.attachments.length > 0) {
-            const items = report.attachments.map(att => {
-                const icon = att.icon === 'image' ? '🖼️' : att.icon === 'text' ? '📄' : att.icon === 'archive' ? '📦' : '📎';
-                const size = att.sizeFormatted ? ` (${escapeHtml(att.sizeFormatted)})` : '';
-                const url = escapeHtml(att.url || '#');
-                const name = escapeHtml(att.name || 'Файл');
-                return `<div class="report-attachment-item">
-                    <span class="attachment-icon">${icon}</span>
-                    <a href="${url}" class="attachment-download-link" target="_blank" rel="noopener noreferrer" download="${name}">${name}</a>
-                    <span class="attachment-size">${size}</span>
-                </div>`;
-            }).join('');
+            const validAttachments = report.attachments.filter(Boolean);
+            if (validAttachments.length > 0) {
+                const items = validAttachments.map(att => {
+                    const icon = att.icon === 'image' ? '🖼️' : att.icon === 'text' ? '📄' : att.icon === 'archive' ? '📦' : '📎';
+                    const size = att.sizeFormatted ? ` (${escapeHtml(att.sizeFormatted)})` : '';
+                    const url = escapeHtml(att.url || '#');
+                    const name = escapeHtml(att.name || 'Файл');
+                    return `<div class="report-attachment-item">
+                        <span class="attachment-icon">${icon}</span>
+                        <a href="${url}" class="attachment-download-link" target="_blank" rel="noopener noreferrer" download="${name}">${name}</a>
+                        <span class="attachment-size">${size}</span>
+                    </div>`;
+                }).join('');
 
-            attachmentsHtml = `<div class="report-attachments-wrapper">
-                <div class="report-attachments-heading">Прикрепленные материалы:</div>
-                <div class="report-attachments-list">${items}</div>
-            </div>`;
+                attachmentsHtml = `<div class="report-attachments-wrapper">
+                    <div class="report-attachments-heading">Прикрепленные материалы:</div>
+                    <div class="report-attachments-list">${items}</div>
+                </div>`;
+            }
         }
 
         // Review comment
@@ -427,8 +434,8 @@
                     if (typeof callbacks.onTakeTask === 'function') callbacks.onTakeTask(taskId, btn);
                     if (typeof callbacks.onAction === 'function') callbacks.onAction('take_in_progress', taskId, btn);
                 } else if (classList.contains('btn-submit-report') || action === 'submit_report') {
-                    if (typeof callbacks.onSubmitReportClick === 'function') callbacks.onSubmitReportClick(taskId, btn);
-                    if (typeof callbacks.onSubmitReport === 'function') callbacks.onSubmitReport(taskId, btn);
+                    const cb = callbacks.onSubmitReportClick || callbacks.onSubmitReport;
+                    if (typeof cb === 'function') cb(taskId, btn);
                     if (typeof callbacks.onAction === 'function') callbacks.onAction('submit_report', taskId, btn);
                 } else if (classList.contains('btn-approve-task') || action === 'approve') {
                     if (typeof callbacks.onApproveTask === 'function') callbacks.onApproveTask(taskId, btn);
