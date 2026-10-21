@@ -1353,6 +1353,10 @@
         // EVENT BINDINGS
         // =====================================================================
 
+        bindEvents() {
+            return this.bindAllEvents();
+        }
+
         bindAllEvents() {
             if (!this.document) return;
 
@@ -1437,7 +1441,16 @@
 
             // 7. Chat Module event bindings
             if (this.chatModule && typeof this.chatModule.bindChatEvents === 'function') {
-                this.chatModule.bindChatEvents(this.document, {
+                const chatElements = {
+                    messageInput: this.document.getElementById('messageInput'),
+                    btnSendMessage: this.document.getElementById('btnSendMessage'),
+                    btnAttachFile: this.document.getElementById('btnAttachFile'),
+                    fileInput: this.document.getElementById('fileInput'),
+                    attachmentPreviews: this.document.getElementById('attachmentPreviews'),
+                    attachmentList: this.document.getElementById('attachmentList')
+                };
+
+                this.chatModule.bindChatEvents(chatElements, {
                     onSendMessage: (text, atts) => {
                         const allAtts = (this.state.pendingChatAttachments || []).concat(atts || []);
                         this.sendMessage(text, allAtts);
@@ -1450,10 +1463,25 @@
 
             // 8. Tasks Module event bindings
             if (this.tasksModule && typeof this.tasksModule.bindTaskEvents === 'function') {
-                this.tasksModule.bindTaskEvents(this.document, {
+                const taskElements = {
+                    tasksContainer: this.document.getElementById('tasksContainer'),
+                    filterButtons: this.document.querySelectorAll('.tasks-filters-group .filter-btn'),
+                    btnOpenCreateTask: this.document.getElementById('btnOpenCreateTask'),
+                    btnCreateTaskSubmit: this.document.getElementById('btnCreateTaskSubmit'),
+                    btnSubmitReportSubmit: this.document.getElementById('btnSubmitReportSubmit'),
+                    btnReviewApprove: this.document.getElementById('btnReviewApprove'),
+                    btnReviewReject: this.document.getElementById('btnReviewReject')
+                };
+
+                this.tasksModule.bindTaskEvents(taskElements, {
                     onFilterChange: (status) => this.setTaskFilter(status),
+                    onTakeTask: (taskId) => this.takeTaskInProgress(taskId),
                     onTakeInProgress: (taskId) => this.takeTaskInProgress(taskId),
+                    onSubmitReportClick: (taskId) => this.openSubmitReportModal(taskId),
+                    onSubmitReport: (taskId) => this.openSubmitReportModal(taskId),
                     onOpenSubmitReport: (taskId) => this.openSubmitReportModal(taskId),
+                    onApproveTask: (taskId) => this.openReviewModal(taskId),
+                    onRejectTask: (taskId) => this.openReviewModal(taskId),
                     onOpenReview: (taskId) => this.openReviewModal(taskId),
                     onOpenCreateTask: () => this.openCreateTaskModal(),
                     onCreateTaskSubmit: () => this.createTask(),

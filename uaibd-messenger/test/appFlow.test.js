@@ -262,4 +262,67 @@ describe('AppController Integration & Workflow', () => {
         assert.strictEqual(controller.state.messages.some(m => m.id === 'm-live-1'), true);
         assert.strictEqual(mockAPI._notifications.some(n => n.title.includes('Новое сообщение')), true);
     });
+
+    test('bindEvents resolves DOM element dictionaries and registers callbacks', () => {
+        let chatDomPassed = null;
+        let chatCallbacksPassed = null;
+        let taskDomPassed = null;
+        let taskCallbacksPassed = null;
+
+        const fakeElement = (id) => ({ id, addEventListener: () => {}, classList: { add: () => {}, remove: () => {} } });
+        const mockDoc = {
+            getElementById: (id) => fakeElement(id),
+            querySelectorAll: () => [fakeElement('filter-1')]
+        };
+
+        const mockChatModule = {
+            bindChatEvents: (elements, callbacks) => {
+                chatDomPassed = elements;
+                chatCallbacksPassed = callbacks;
+            }
+        };
+
+        const mockTasksModule = {
+            bindTaskEvents: (elements, callbacks) => {
+                taskDomPassed = elements;
+                taskCallbacksPassed = callbacks;
+            }
+        };
+
+        const controller = new AppController({
+            document: mockDoc,
+            chatModule: mockChatModule,
+            tasksModule: mockTasksModule
+        });
+
+        controller.bindEvents();
+
+        assert.ok(chatDomPassed);
+        assert.strictEqual(chatDomPassed.messageInput.id, 'messageInput');
+        assert.strictEqual(chatDomPassed.btnSendMessage.id, 'btnSendMessage');
+        assert.strictEqual(chatDomPassed.btnAttachFile.id, 'btnAttachFile');
+        assert.strictEqual(chatDomPassed.fileInput.id, 'fileInput');
+        assert.strictEqual(chatDomPassed.attachmentPreviews.id, 'attachmentPreviews');
+        assert.strictEqual(chatDomPassed.attachmentList.id, 'attachmentList');
+        assert.strictEqual(typeof chatCallbacksPassed.onSendMessage, 'function');
+
+        assert.ok(taskDomPassed);
+        assert.strictEqual(taskDomPassed.tasksContainer.id, 'tasksContainer');
+        assert.strictEqual(taskDomPassed.btnOpenCreateTask.id, 'btnOpenCreateTask');
+        assert.strictEqual(taskDomPassed.btnCreateTaskSubmit.id, 'btnCreateTaskSubmit');
+        assert.strictEqual(taskDomPassed.btnSubmitReportSubmit.id, 'btnSubmitReportSubmit');
+        assert.strictEqual(taskDomPassed.btnReviewApprove.id, 'btnReviewApprove');
+        assert.strictEqual(taskDomPassed.btnReviewReject.id, 'btnReviewReject');
+
+        assert.strictEqual(typeof taskCallbacksPassed.onTakeTask, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onSubmitReportClick, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onSubmitReport, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onApproveTask, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onRejectTask, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onOpenCreateTask, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onCreateTaskSubmit, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onSubmitReportSubmit, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onReviewApprove, 'function');
+        assert.strictEqual(typeof taskCallbacksPassed.onReviewReject, 'function');
+    });
 });
