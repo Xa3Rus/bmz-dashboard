@@ -26,7 +26,11 @@ describe('Project Configuration & Schema', () => {
         assert.ok(sql.includes("'lead_engineer'"), 'lead_engineer role missing');
         assert.ok(sql.includes("'developer'"), 'developer role missing');
         assert.ok(sql.includes("'todo'"), 'todo status missing');
+        assert.ok(sql.includes("'in_progress'"), 'in_progress status missing');
         assert.ok(sql.includes("'review'"), 'review status missing');
         assert.ok(sql.includes("'done'"), 'done status missing');
+        assert.ok(sql.includes('direct_chats_users_distinct'), 'direct_chats_users_distinct check missing');
+        assert.ok(sql.includes('idx_direct_chats_pair'), 'idx_direct_chats_pair index missing');
+        assert.ok(sql.includes('set_updated_at'), 'set_updated_at trigger missing');
     });
 });

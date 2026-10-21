@@ -35,8 +35,10 @@ CREATE TABLE IF NOT EXISTS direct_chats (
     user_1 UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     user_2 UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT unique_user_pair UNIQUE (user_1, user_2)
+    CONSTRAINT direct_chats_users_distinct CHECK (user_1 <> user_2)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_direct_chats_pair ON direct_chats (LEAST(user_1, user_2), GREATEST(user_1, user_2));
 
 -- 4. Messages Table
 CREATE TABLE IF NOT EXISTS messages (
@@ -91,6 +93,23 @@ CREATE INDEX IF NOT EXISTS idx_tasks_creator ON tasks(creator_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
 CREATE INDEX IF NOT EXISTS idx_task_reports_task ON task_reports(task_id);
+
+-- =============================================================================
+-- Automatic Timestamp Updates
+-- =============================================================================
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_tasks_set_updated_at ON tasks;
+CREATE TRIGGER trg_tasks_set_updated_at
+BEFORE UPDATE ON tasks
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
 
 -- =============================================================================
 -- Row Level Security (RLS) & Policies
