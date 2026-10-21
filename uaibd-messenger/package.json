@@ -1,0 +1,19 @@
+{
+  "name": "uaibd-messenger",
+  "version": "1.0.0",
+  "description": "Enterprise Task Messenger for BMZ UA&BD Department",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": ["bmz", "uaibd", "messenger", "tasks", "electron", "supabase"],
+  "author": "BMZ UA&BD",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0"
+  }
+}
