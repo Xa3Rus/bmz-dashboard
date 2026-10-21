@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' https://*.supabase.co https://*.supabase.in data: blob:;">
+    <title>БМЗ — Управление автоматизации и баз данных (УАиБД)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app" class="app-layout">
+        <!-- ============================================================ -->
+        <!-- COLUMN 1: Server & Department Navigation Sidebar            -->
+        <!-- ============================================================ -->
+        <aside id="serverSidebar" class="server-sidebar" aria-label="Панель серверов и отделов">
+            <div class="server-badge" title="Белорусский металлургический завод — УАиБД" id="serverBmzBadge">
+                <div class="badge-text">БМЗ</div>
+                <div class="badge-subtext">УАиБД</div>
+            </div>
+            
+            <div class="server-separator" role="separator"></div>
+
+            <button id="btnServerHome" class="server-icon active" title="Общий отдел УАиБД" aria-label="Общий отдел УАиБД">
+                <span class="server-icon-glyph">🏭</span>
+                <span class="active-indicator"></span>
+            </button>
+
+            <button id="btnServerTasksSummary" class="server-icon" title="Сводка производственных задач" aria-label="Сводка задач">
+                <span class="server-icon-glyph">📊</span>
+            </button>
+
+            <div class="server-spacer"></div>
+
+            <div class="server-status-container" title="Статус подключения к серверу">
+                <span id="connectionStatusDot" class="status-dot online"></span>
+            </div>
+        </aside>
+
+        <!-- ============================================================ -->
+        <!-- COLUMN 2: Channels & Contacts Sidebar                        -->
+        <!-- ============================================================ -->
+        <aside id="channelsSidebar" class="channels-sidebar" aria-label="Каналы и контакты">
+            <!-- Header: Department Name & Status -->
+            <header class="department-header">
+                <div class="department-info">
+                    <h1 class="department-title">УАиБД БМЗ</h1>
+                    <span class="department-subtitle">Цеховая автоматизация</span>
+                </div>
+                <div class="department-status-badge" id="deptStatusBadge">АСУ ТП</div>
+            </header>
+
+            <!-- Channels & Contacts Scroll Area -->
+            <div class="channels-scroll-container">
+                <!-- Section 1: Channels -->
+                <div class="category-block">
+                    <div class="category-header">
+                        <span class="category-chevron">▼</span>
+                        <span class="category-title">ТЕКСТОВЫЕ КАНАЛЫ</span>
+                    </div>
+                    <div class="channels-list">
+                        <div id="channelGeneral" class="channel-item active" data-slug="general" role="button" tabindex="0">
+                            <span class="channel-hash">#</span>
+                            <span class="channel-label">общий-чат</span>
+                            <span id="generalUnreadBadge" class="unread-pill hidden">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Direct Messages (Руководство) -->
+                <div class="category-block">
+                    <div class="category-header">
+                        <span class="category-chevron">▼</span>
+                        <span class="category-title">РУКОВОДСТВО</span>
+                    </div>
+                    <div id="contactsLeadership" class="contacts-list">
+                        <!-- Seed/Dynamic contacts will be rendered here -->
+                        <div class="contact-item" data-user-id="seed-chief" role="button" tabindex="0">
+                            <div class="avatar-wrap">
+                                <div class="avatar-circle avatar-chief">ИА</div>
+                                <span class="status-dot online"></span>
+                            </div>
+                            <div class="contact-details">
+                                <span class="contact-name">Иванов А.С.</span>
+                                <span class="contact-role-tag">Начальник УАиБД</span>
+                            </div>
+                            <span class="contact-task-badge" title="Активные задачи">1</span>
+                        </div>
+                        <div class="contact-item" data-user-id="seed-lead" role="button" tabindex="0">
+                            <div class="avatar-wrap">
+                                <div class="avatar-circle avatar-lead">ПВ</div>
+                                <span class="status-dot online"></span>
+                            </div>
+                            <div class="contact-details">
+                                <span class="contact-name">Петров В.И.</span>
+                                <span class="contact-role-tag">Вед. инженер</span>
+                            </div>
+                            <span class="contact-task-badge" title="Активные задачи">2</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Direct Messages (Разработка и АСУ ТП) -->
+                <div class="category-block">
+                    <div class="category-header">
+                        <span class="category-chevron">▼</span>
+                        <span class="category-title">РАЗРАБОТКА И АСУ ТП</span>
+                    </div>
+                    <div id="contactsDevelopers" class="contacts-list">
+                        <!-- Seed/Dynamic contacts will be rendered here -->
+                        <div class="contact-item" data-user-id="seed-dev-1" role="button" tabindex="0">
+                            <div class="avatar-wrap">
+                                <div class="avatar-circle avatar-dev">СМ</div>
+                                <span class="status-dot online"></span>
+                            </div>
+                            <div class="contact-details">
+                                <span class="contact-name">Сидоров М.К.</span>
+                                <span class="contact-role-tag">Программист АСУ ТП</span>
+                            </div>
+                            <span class="contact-task-badge" title="Активные задачи">3</span>
+                        </div>
+                        <div class="contact-item" data-user-id="seed-dev-2" role="button" tabindex="0">
+                            <div class="avatar-wrap">
+                                <div class="avatar-circle avatar-dev">КД</div>
+                                <span class="status-dot offline"></span>
+                            </div>
+                            <div class="contact-details">
+                                <span class="contact-name">Ковалев Д.А.</span>
+                                <span class="contact-role-tag">Программист БД</span>
+                            </div>
+                            <span class="contact-task-badge" title="Активные задачи">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current User Profile Bar at bottom -->
+            <footer id="currentUserBar" class="current-user-bar">
+                <div class="user-avatar-wrap">
+                    <div id="currentUserAvatar" class="avatar-circle avatar-chief">ИА</div>
+                    <span id="currentUserStatusDot" class="status-dot online"></span>
+                </div>
+                <div class="user-info">
+                    <div id="currentUserName" class="user-name">Иванов А.С.</div>
+                    <div id="currentUserRole" class="user-role badge-role-chief">Начальник УАиБД</div>
+                </div>
+                <div class="user-controls">
+                    <button id="btnSwitchProfile" class="icon-btn" title="Сменить профиль сотрудника" aria-label="Сменить профиль">
+                        <span class="icon-swap">🔄</span>
+                    </button>
+                </div>
+            </footer>
+        </aside>
+
+        <!-- ============================================================ -->
+        <!-- COLUMN 3: Main Working Area (Header, Chat & Tasks)          -->
+        <!-- ============================================================ -->
+        <main id="mainContent" class="main-content" aria-label="Основная рабочая область">
+            <!-- Main Content Header -->
+            <header id="mainHeader" class="main-header">
+                <div class="header-left">
+                    <span id="headerIcon" class="header-icon">#</span>
+                    <h2 id="headerTitle" class="header-title">общий-чат</h2>
+                    <div class="header-divider"></div>
+                    <p id="headerTopic" class="header-topic">Оперативная координация дежурных смен и объявления УАиБД</p>
+                </div>
+
+                <div class="header-right">
+                    <nav class="tabs-nav" aria-label="Режимы отображения">
+                        <button id="tabChat" class="tab-btn active" type="button" aria-selected="true">
+                            <span class="tab-icon">💬</span>
+                            <span>Чат</span>
+                        </button>
+                        <button id="tabTasks" class="tab-btn" type="button" aria-selected="false">
+                            <span class="tab-icon">📋</span>
+                            <span>Задачи</span>
+                            <span id="taskCountBadge" class="badge">0</span>
+                        </button>
+                    </nav>
+                </div>
+            </header>
+
+            <!-- Working Stage Views -->
+            <div class="stage-views-container">
+                <!-- VIEW 1: Chat Stage -->
+                <section id="chatView" class="stage-view active" aria-label="Чат">
+                    <div id="messagesContainer" class="messages-container" tabindex="0">
+                        <!-- Message items rendered dynamically -->
+                        <div class="chat-welcome-banner">
+                            <div class="welcome-icon">💬</div>
+                            <h3 class="welcome-title">Добро пожаловать в рабочий чат УАиБД БМЗ!</h3>
+                            <p class="welcome-desc">Здесь осуществляется оперативная передача смен, обсуждение показаний датчиков, ПЛК и регламентов печей ДСП.</p>
+                        </div>
+                    </div>
+
+                    <!-- Attachment Previews Area -->
+                    <div id="attachmentPreviews" class="attachment-previews hidden">
+                        <div class="attachment-previews-title">Прикрепленные файлы к отправке:</div>
+                        <div id="attachmentList" class="attachment-list"></div>
+                    </div>
+
+                    <!-- Chat Input Bar -->
+                    <footer class="chat-input-wrapper">
+                        <div class="chat-input-box">
+                            <button id="btnAttachFile" class="btn-attach" type="button" title="Прикрепить файл (лог, дамп, отчет, фото)">
+                                <span class="attach-icon">📎</span>
+                            </button>
+                            <input type="file" id="fileInput" multiple style="display: none;" aria-hidden="true">
+
+                            <textarea id="messageInput" class="message-input" placeholder="Написать сообщение в #общий-чат (Enter — отправить, Shift+Enter — новая строка)" rows="1"></textarea>
+
+                            <button id="btnSendMessage" class="btn-send" type="button" title="Отправить сообщение">
+                                <span>Отправить</span>
+                            </button>
+                        </div>
+                    </footer>
+                </section>
+
+                <!-- VIEW 2: Tasks Stage -->
+                <section id="tasksView" class="stage-view hidden" aria-label="Доска задач">
+                    <!-- Tasks Action Bar -->
+                    <div class="tasks-action-bar">
+                        <div class="tasks-filters-group" role="group" aria-label="Фильтры задач">
+                            <button class="filter-btn active" data-status="all" type="button">
+                                Все (<span id="filterCountAll">0</span>)
+                            </button>
+                            <button class="filter-btn" data-status="todo" type="button">
+                                К выполнению (<span id="filterCountTodo">0</span>)
+                            </button>
+                            <button class="filter-btn" data-status="in_progress" type="button">
+                                В работе (<span id="filterCountInProgress">0</span>)
+                            </button>
+                            <button class="filter-btn" data-status="review" type="button">
+                                На проверке (<span id="filterCountReview">0</span>)
+                            </button>
+                            <button class="filter-btn" data-status="done" type="button">
+                                Выполнено (<span id="filterCountDone">0</span>)
+                            </button>
+                        </div>
+
+                        <div class="tasks-actions-right">
+                            <button id="btnOpenCreateTask" class="btn-primary" type="button">
+                                <span class="btn-icon">+</span>
+                                <span>Назначить задачу</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tasks Cards Grid / List -->
+                    <div id="tasksContainer" class="tasks-container">
+                        <!-- Task cards rendered dynamically -->
+                        <div class="tasks-empty-placeholder">
+                            <div class="empty-icon">📋</div>
+                            <p class="empty-text">Нет задач в выбранной категории</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- MODALS                                                       -->
+    <!-- ============================================================ -->
+
+    <!-- Modal 1: Create Task (Руководство -> Исполнитель) -->
+    <div id="modalCreateTask" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalCreateTaskTitle">
+        <div class="modal-card">
+            <header class="modal-header">
+                <h3 id="modalCreateTaskTitle" class="modal-title">Назначить техническую задачу</h3>
+                <button class="modal-close-btn" data-close-modal="modalCreateTask" type="button">&times;</button>
+            </header>
+
+            <form id="formCreateTask" class="modal-body" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="taskTitleInput" class="form-label">Наименование задачи <span class="required">*</span></label>
+                    <input type="text" id="taskTitleInput" class="form-control" placeholder="Например: Калибровка датчиков температуры свода ДСП-1" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskDescInput" class="form-label">Техническое задание и регламент <span class="required">*</span></label>
+                    <textarea id="taskDescInput" class="form-control textarea-tall" placeholder="Укажите подробное описание, адреса регистров ПЛК, условия блокировок..." rows="4" required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group col-half">
+                        <label for="taskAssigneeSelect" class="form-label">Исполнитель <span class="required">*</span></label>
+                        <select id="taskAssigneeSelect" class="form-control" required>
+                            <option value="">-- Выберите программиста --</option>
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="form-group col-half">
+                        <label for="taskPrioritySelect" class="form-label">Приоритет <span class="required">*</span></label>
+                        <select id="taskPrioritySelect" class="form-control" required>
+                            <option value="normal">Обычный (Плановый)</option>
+                            <option value="high">Высокий (Важно)</option>
+                            <option value="urgent">Авария / Срочно</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskDueDateInput" class="form-label">Срок выполнения (дедлайн)</label>
+                    <input type="date" id="taskDueDateInput" class="form-control">
+                </div>
+            </form>
+
+            <footer class="modal-footer">
+                <button id="btnCreateTaskCancel" class="btn-secondary" data-close-modal="modalCreateTask" type="button">Отмена</button>
+                <button id="btnCreateTaskSubmit" class="btn-primary" type="button">Создать задачу</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Modal 2: Submit Report (Программист -> На проверку) -->
+    <div id="modalSubmitReport" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalSubmitReportTitle">
+        <div class="modal-card">
+            <header class="modal-header">
+                <h3 id="modalSubmitReportTitle" class="modal-title">Сдать инженерный отчет по задаче</h3>
+                <button class="modal-close-btn" data-close-modal="modalSubmitReport" type="button">&times;</button>
+            </header>
+
+            <form id="formSubmitReport" class="modal-body" onsubmit="return false;">
+                <input type="hidden" id="reportTaskId" value="">
+
+                <div class="modal-info-panel">
+                    <span class="info-label">Задача:</span>
+                    <span id="reportTaskTitle" class="modal-task-title">—</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="reportTextInput" class="form-label">Описание выполненных работ <span class="required">*</span></label>
+                    <textarea id="reportTextInput" class="form-control textarea-tall" placeholder="Опишите внесенные изменения в ПО, измененные регистры ПЛК, результаты испытаний на агрегате..." rows="5" required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Прикрепленные технические файлы (дампы, логи, скриншоты, схемы)</label>
+                    <div class="file-upload-zone">
+                        <button id="btnReportAddFile" class="btn-secondary" type="button">
+                            📎 Выбрать файлы отчета
+                        </button>
+                        <input type="file" id="reportFileInput" multiple style="display: none;" aria-hidden="true">
+                        <span class="file-upload-hint">Форматы: .txt, .log, .pdf, .docx, .png, .zip (до 50 МБ)</span>
+                    </div>
+                    <div id="reportFileList" class="report-file-list"></div>
+                </div>
+            </form>
+
+            <footer class="modal-footer">
+                <button id="btnSubmitReportCancel" class="btn-secondary" data-close-modal="modalSubmitReport" type="button">Отмена</button>
+                <button id="btnSubmitReportSubmit" class="btn-primary" type="button">Отправить на проверку</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Modal 3: Review Task Report (Руководство: Принять / Отклонить) -->
+    <div id="modalReviewTask" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalReviewTaskTitle">
+        <div class="modal-card">
+            <header class="modal-header">
+                <h3 id="modalReviewTaskTitle" class="modal-title">Проверка отчета по задаче</h3>
+                <button class="modal-close-btn" data-close-modal="modalReviewTask" type="button">&times;</button>
+            </header>
+
+            <div class="modal-body">
+                <input type="hidden" id="reviewTaskId" value="">
+
+                <div id="reviewReportContent" class="modal-report-content">
+                    <!-- Populated dynamically with task and report summary -->
+                    <div class="report-summary-block">
+                        <h4 id="reviewTaskHeading" class="review-task-heading">Загрузка данных...</h4>
+                        <div id="reviewReportBody" class="review-report-body"></div>
+                        <div id="reviewAttachmentsList" class="review-attachments-list"></div>
+                    </div>
+                </div>
+
+                <div class="form-group mt-16">
+                    <label for="reviewCommentInput" class="form-label">Замечания / Резолюция руководителя</label>
+                    <textarea id="reviewCommentInput" class="form-control" placeholder="Укажите комментарий при согласовании или причину возврата на доработку..." rows="3"></textarea>
+                </div>
+            </div>
+
+            <footer class="modal-footer modal-footer-spaced">
+                <button id="btnReviewCancel" class="btn-secondary" data-close-modal="modalReviewTask" type="button">Закрыть</button>
+                <div class="modal-actions-group">
+                    <button id="btnReviewReject" class="btn-danger" type="button">↩️ На доработку</button>
+                    <button id="btnReviewApprove" class="btn-success" type="button">✅ Принять задачу</button>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Modal 4: Profile Switcher (Быстрая смена ролей) -->
+    <div id="modalProfileSwitch" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalProfileSwitchTitle">
+        <div class="modal-card modal-card-wide">
+            <header class="modal-header">
+                <div>
+                    <h3 id="modalProfileSwitchTitle" class="modal-title">Смена профиля сотрудника УАиБД</h3>
+                    <p class="modal-subtitle">Выберите учетную запись для проверки прав доступа и функционала ролей</p>
+                </div>
+                <button class="modal-close-btn" data-close-modal="modalProfileSwitch" type="button">&times;</button>
+            </header>
+
+            <div class="modal-body">
+                <div class="profile-quick-switch-title">Сотрудники отдела:</div>
+                <div id="profileQuickList" class="profile-grid">
+                    <!-- Profile Card 1: Chief -->
+                    <div class="profile-card" data-role="chief" data-email="ivanov@bmz.by" role="button" tabindex="0">
+                        <div class="profile-card-avatar avatar-chief">ИА</div>
+                        <div class="profile-card-info">
+                            <div class="profile-card-name">Иванов А.С.</div>
+                            <div class="profile-card-role badge-role-chief">Начальник УАиБД</div>
+                            <div class="profile-card-desc">Полный доступ: назначение задач, прием отчетов, оперативный чат</div>
+                        </div>
+                    </div>
+
+                    <!-- Profile Card 2: Lead Engineer -->
+                    <div class="profile-card" data-role="lead_engineer" data-email="petrov@bmz.by" role="button" tabindex="0">
+                        <div class="profile-card-avatar avatar-lead">ПВ</div>
+                        <div class="profile-card-info">
+                            <div class="profile-card-name">Петров В.И.</div>
+                            <div class="profile-card-role badge-role-lead">Ведущий инженер</div>
+                            <div class="profile-card-desc">Назначение задач, контроль дедлайнов, согласование отчетов</div>
+                        </div>
+                    </div>
+
+                    <!-- Profile Card 3: Developer 1 -->
+                    <div class="profile-card" data-role="developer" data-email="sidorov@bmz.by" role="button" tabindex="0">
+                        <div class="profile-card-avatar avatar-dev">СМ</div>
+                        <div class="profile-card-info">
+                            <div class="profile-card-name">Сидоров М.К.</div>
+                            <div class="profile-card-role badge-role-dev">Программист АСУ ТП</div>
+                            <div class="profile-card-desc">Взятие задач в работу, отправка отчетов с логами и дампами</div>
+                        </div>
+                    </div>
+
+                    <!-- Profile Card 4: Developer 2 -->
+                    <div class="profile-card" data-role="developer" data-email="kovalev@bmz.by" role="button" tabindex="0">
+                        <div class="profile-card-avatar avatar-dev">КД</div>
+                        <div class="profile-card-info">
+                            <div class="profile-card-name">Ковалев Д.А.</div>
+                            <div class="profile-card-role badge-role-dev">Программист БД</div>
+                            <div class="profile-card-desc">Сопровождение баз данных цеха, выполнение задач, отчетность</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="modal-footer">
+                <button id="btnProfileSwitchCancel" class="btn-secondary" data-close-modal="modalProfileSwitch" type="button">Закрыть</button>
+            </footer>
+        </div>
+    </div>
+</body>
+</html>
