@@ -19,12 +19,46 @@ export class TelemetryPresenter {
     this.onSyncAll = onSyncAllCallback;
 
     this.view.bindFurnaceSelect(furnaceId => this.handleFurnaceSelect(furnaceId));
+    this.view.bindSensorCardClick(sensorKey => this.handleSensorCardClick(sensorKey));
     this.view.bindCameraPresets(preset => this.view.setCameraPreset(preset));
     this.view.bindRenderModes(mode => this.view.set3DRenderMode(mode));
-    this.view.bindExportCsv(() => this.handleExportCsv());
+  }
+
+  handleSensorCardClick(sensorKey) {
+    const info = this.model.getSensorInfo(sensorKey);
+    const furnace = this.model.getActiveFurnace();
+    if (!info || !furnace) return;
+
+    const status = furnace.sensorStatuses[sensorKey] || 'normal';
+    const statusLabel = status === 'danger' ? 'АВАРИЯ' : (status === 'warning' ? 'ВНИМАНИЕ' : 'НОРМА');
+
+    const valueMap = {
+      temperature: `${furnace.temperature} °C`,
+      current: `${furnace.current.toFixed(1)} кА`,
+      pressure: `${furnace.pressure} Па`,
+      energy: `${furnace.energy.toFixed(2)} МВт·ч`,
+      oxygen: `${furnace.oxygen} м³/ч`
+    };
+
+    this.view.openSensorDetailModal({
+      ...info,
+      formattedValue: valueMap[sensorKey] || '—',
+      status,
+      statusLabel,
+      furnaceInfo: `${furnace.fullName} · ${furnace.stage}`
+    });
   }
 
   handleFurnaceSelect(furnaceId) {
+    const currentUser = this.model.getCurrentUser();
+    if (currentUser && !currentUser.isMaster) {
+      const assigned = this.model.getAssignedFurnaceForUser(currentUser.badgeNo)
+        || this.model.getUserAssignmentsAcrossShifts(currentUser.badgeNo)[0]?.furnaceId;
+      if (assigned && Number(assigned) !== Number(furnaceId)) {
+        return;
+      }
+    }
+
     const access = this.model.checkAccessToFurnace(furnaceId);
     this.model.setActiveFurnace(furnaceId);
     if (this.onSyncAll) this.onSyncAll();

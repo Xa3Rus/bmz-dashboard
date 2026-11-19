@@ -28,5 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlcConfig: () => ipcRenderer.invoke('plc:config'),
 
   // 5. Модуль экспорта CSV-отчётов на Рабочий стол (modules/csvReportModule.js)
-  exportCSV: (csvContent, fileName) => ipcRenderer.invoke('export-csv', { csvContent, fileName })
+  exportCSV: (csvContent, fileName) => ipcRenderer.invoke('export-csv', { csvContent, fileName }),
+
+  // 6. Защита закрытия программы по паролю
+  onRequestClose: (callback) => ipcRenderer.on('app:request-close', () => callback()),
+  confirmClose: (password) => ipcRenderer.invoke('app:confirm-close', password)
 });

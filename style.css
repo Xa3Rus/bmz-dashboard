@@ -1189,7 +1189,7 @@ html, body {
    ============================================================================ */
 .panel-analytics {
   display: grid;
-  grid-template-rows: 235px 140px 1fr;
+  grid-template-rows: 235px auto 1fr;
   gap: 8px;
   min-height: 0;
 }
@@ -1726,6 +1726,47 @@ html, body {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.table-action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.btn-table-edit {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  background: rgba(16, 163, 127, 0.14);
+  border: 1px solid rgba(16, 163, 127, 0.45);
+  color: var(--prim-codex-300);
+  cursor: pointer;
+}
+
+.btn-table-edit:hover {
+  background: var(--prim-codex-500);
+  color: #ffffff;
+}
+
+.btn-secondary-cancel {
+  margin-top: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-secondary-cancel:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
 .btn-table-del {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1738,6 +1779,322 @@ html, body {
 }
 
 .btn-table-del:hover {
+  background: var(--status-danger);
+  color: #ffffff;
+}
+
+.sensor-card {
+  cursor: pointer;
+}
+
+.sensor-card:hover {
+  border-color: var(--prim-codex-400);
+  background: rgba(16, 163, 127, 0.06);
+  transform: translateY(-1px);
+}
+
+/* Модальное окно подробной информации о показателе */
+.scada-modal-sensor {
+  width: min(820px, 94vw);
+}
+
+.sensor-modal-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sensor-modal-kpi {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sensor-modal-kpi-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.sensor-modal-live-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sensor-modal-kpi-val {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sensor-modal-kpi-sub {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sensor-modal-desc-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.sensor-modal-section-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--prim-codex-300);
+  margin-bottom: 6px;
+}
+
+.sensor-modal-desc-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, #d4d4d8);
+}
+
+.sensor-modal-deviations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sensor-deviation-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sensor-deviation-card.is-below {
+  border-left: 3px solid #38bdf8;
+}
+
+.sensor-deviation-card.is-above {
+  border-left: 3px solid #ef4444;
+}
+
+.sensor-deviation-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.sensor-deviation-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sensor-deviation-card.is-below .sensor-deviation-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+}
+
+.sensor-deviation-card.is-above .sensor-deviation-dot {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+}
+
+.sensor-deviation-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary, #d4d4d8);
+}
+
+.sensor-deviation-action {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sensor-deviation-action span {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.sensor-deviation-action p {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* Модальное окно выбора сценария симуляции аварии */
+.scada-modal-picker {
+  width: min(680px, 92vw);
+}
+
+.picker-modal-body {
+  padding: 12px 16px 16px;
+}
+
+.picker-table-head {
+  display: grid;
+  grid-template-columns: 190px 1fr 1fr;
+  gap: 10px;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.picker-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.picker-row {
+  display: grid;
+  grid-template-columns: 190px 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.picker-row:last-child {
+  border-bottom: none;
+}
+
+.picker-param-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.picker-param-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.picker-param-norm {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.picker-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.picker-action-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.picker-action-btn.is-low:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.picker-action-btn.is-high:hover {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.picker-action-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.picker-action-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.picker-action-btn.is-low .picker-action-meta {
+  color: #7dd3fc;
+}
+
+.picker-action-btn.is-high .picker-action-meta {
+  color: #fca5a5;
+}
+
+.picker-empty-slot {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  padding-left: 10px;
+}
+
+/* Модальное окно подтверждения закрытия программы */
+.close-app-backdrop {
+  z-index: 3000;
+}
+
+.scada-modal-close-app {
+  width: min(400px, 92vw);
+}
+
+.close-app-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.btn-danger-exit {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.btn-danger-exit:hover {
   background: var(--status-danger);
   color: #ffffff;
 }

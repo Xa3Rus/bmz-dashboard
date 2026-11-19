@@ -32,16 +32,34 @@ const incidentsModule = new IncidentsModule();
 const plcTelemetryModule = new PlcTelemetryModule();
 const csvReportModule = new CsvReportModule(app);
 
+const EXIT_PASSWORD = '0000';
+let mainWindow = null;
+let allowAppClose = false;
+
 function registerAllModulesIpc() {
   storageModule.registerIpcHandlers(ipcMain);
   authShiftModule.registerIpcHandlers(ipcMain);
   incidentsModule.registerIpcHandlers(ipcMain);
   plcTelemetryModule.registerIpcHandlers(ipcMain);
   csvReportModule.registerIpcHandlers(ipcMain);
+
+  // Подтверждение закрытия приложения по паролю
+  ipcMain.handle('app:confirm-close', (_event, password) => {
+    if (String(password || '').trim() === EXIT_PASSWORD) {
+      allowAppClose = true;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.close();
+      } else {
+        app.quit();
+      }
+      return { ok: true };
+    }
+    return { ok: false, error: 'Неверный пароль. Закрытие программы отменено.' };
+  });
 }
 
 function createMainWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1580,
     height: 950,
     minWidth: 1280,
@@ -54,6 +72,19 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+
+  mainWindow.on('close', (event) => {
+    if (!allowAppClose) {
+      event.preventDefault();
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:request-close');
+      }
+    }
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));

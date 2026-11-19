@@ -21,13 +21,17 @@ export class AuthShiftView {
       btnCloseStaffModal: document.getElementById('btnCloseStaffModal'),
       staffTabBtns: document.querySelectorAll('[data-staff-tab]'),
       loginForm: document.getElementById('loginForm'),
-      loginShiftSelect: document.getElementById('loginShiftSelect'),
+      loginCurrentShiftDisplay: document.getElementById('loginCurrentShiftDisplay'),
       loginBadgeInput: document.getElementById('loginBadgeInput'),
       loginPinInput: document.getElementById('loginPinInput'),
       loginErrorMsg: document.getElementById('loginErrorMsg'),
       quickRosterGrid: document.getElementById('quickRosterGrid'),
       shiftMatrixTbody: document.getElementById('shiftMatrixTbody'),
       addUserForm: document.getElementById('addUserForm'),
+      userFormTitle: document.getElementById('userFormTitle'),
+      userFormDesc: document.getElementById('userFormDesc'),
+      btnSubmitUserForm: document.getElementById('btnSubmitUserForm'),
+      btnCancelEditUser: document.getElementById('btnCancelEditUser'),
       newBadgeInput: document.getElementById('newBadgeInput'),
       newPinInput: document.getElementById('newPinInput'),
       newFullNameInput: document.getElementById('newFullNameInput'),
@@ -39,6 +43,7 @@ export class AuthShiftView {
     };
 
     this.isAuthLocked = true;
+    this.editingBadgeNo = null;
     this._initModalTabs();
   }
 
@@ -50,7 +55,7 @@ export class AuthShiftView {
     });
   }
 
-  bindStaffModalEvents({ onOpenModal, onLoginSubmit, onAssignResponsible, onAddUser, onDeleteUser }) {
+  bindStaffModalEvents({ onOpenModal, onLoginSubmit, onAssignResponsible, onAddUser, onUpdateUser, onDeleteUser }) {
     this.onAssignResponsibleCallback = onAssignResponsible;
     this.onDeleteUserCallback = onDeleteUser;
 
@@ -83,7 +88,6 @@ export class AuthShiftView {
       e.preventDefault();
       if (onLoginSubmit) {
         onLoginSubmit({
-          shiftId: Number(this.dom.loginShiftSelect?.value || 1),
           badgeNo: this.dom.loginBadgeInput?.value.trim() || '',
           pinCode: this.dom.loginPinInput?.value.trim() || ''
         });
@@ -92,16 +96,25 @@ export class AuthShiftView {
 
     this.dom.addUserForm?.addEventListener('submit', e => {
       e.preventDefault();
-      if (onAddUser) {
-        onAddUser({
-          badgeNo: this.dom.newBadgeInput?.value.trim() || '',
-          pinCode: this.dom.newPinInput?.value.trim() || '',
-          fullName: this.dom.newFullNameInput?.value.trim() || '',
-          role: this.dom.newRoleSelect?.value || 'Сталевар 6 разряда',
-          assignShiftId: Number(this.dom.newAssignShiftSelect?.value || 0),
-          assignFurnaceId: Number(this.dom.newAssignFurnaceSelect?.value || 0)
-        });
+      const payload = {
+        badgeNo: this.dom.newBadgeInput?.value.trim() || '',
+        pinCode: this.dom.newPinInput?.value.trim() || '',
+        fullName: this.dom.newFullNameInput?.value.trim() || '',
+        role: this.dom.newRoleSelect?.value || 'Сталевар 6 разряда',
+        assignShiftId: Number(this.dom.newAssignShiftSelect?.value || 0),
+        assignFurnaceId: Number(this.dom.newAssignFurnaceSelect?.value || 0)
+      };
+
+      if (this.editingBadgeNo) {
+        if (onUpdateUser) onUpdateUser(this.editingBadgeNo, payload);
+      } else if (onAddUser) {
+        onAddUser(payload);
       }
+    });
+
+    this.dom.btnCancelEditUser?.addEventListener('click', () => {
+      this.clearAddUserForm();
+      this.setAddUserError('');
     });
   }
 
@@ -162,22 +175,62 @@ export class AuthShiftView {
   }
 
   clearAddUserForm() {
+    this.editingBadgeNo = null;
     if (this.dom.newBadgeInput) this.dom.newBadgeInput.value = '';
     if (this.dom.newFullNameInput) this.dom.newFullNameInput.value = '';
     if (this.dom.newPinInput) this.dom.newPinInput.value = '1234';
+    if (this.dom.newRoleSelect) this.dom.newRoleSelect.value = 'Сталевар 6 разряда';
+    if (this.dom.newAssignShiftSelect) this.dom.newAssignShiftSelect.value = '0';
+    if (this.dom.newAssignFurnaceSelect) this.dom.newAssignFurnaceSelect.value = '0';
+    if (this.dom.userFormTitle) this.dom.userFormTitle.textContent = 'Регистрация нового пользователя ЭСПЦ-2';
+    if (this.dom.btnSubmitUserForm) this.dom.btnSubmitUserForm.textContent = 'Добавить пользователя в штат';
+    this.dom.btnCancelEditUser?.classList.add('hidden');
   }
 
-  renderStaffModal({ users, matrix, activeShiftId, currentUserBadge }) {
-    if (this.dom.loginShiftSelect) {
-      this.dom.loginShiftSelect.value = String(activeShiftId);
+  enterEditUserMode(user) {
+    if (!user) return;
+    this.editingBadgeNo = String(user.badgeNo);
+    if (this.dom.newBadgeInput) this.dom.newBadgeInput.value = user.badgeNo;
+    if (this.dom.newPinInput) this.dom.newPinInput.value = user.pinCode;
+    if (this.dom.newFullNameInput) this.dom.newFullNameInput.value = user.fullName;
+
+    if (this.dom.newRoleSelect) {
+      const roleOptions = Array.from(this.dom.newRoleSelect.options).map(o => o.value);
+      const matched = user.isMaster
+        ? 'Мастер смены ЭСПЦ-2'
+        : (roleOptions.find(opt => user.role && user.role.startsWith(opt)) || 'Сталевар 6 разряда');
+      this.dom.newRoleSelect.value = matched;
+    }
+
+    if (this.dom.newAssignShiftSelect) this.dom.newAssignShiftSelect.value = '0';
+    if (this.dom.newAssignFurnaceSelect) this.dom.newAssignFurnaceSelect.value = '0';
+    if (this.dom.userFormTitle) this.dom.userFormTitle.textContent = `Редактирование: ${user.fullName} (Таб. №${user.badgeNo})`;
+    if (this.dom.btnSubmitUserForm) this.dom.btnSubmitUserForm.textContent = 'Сохранить изменения';
+    this.dom.btnCancelEditUser?.classList.remove('hidden');
+    this.setAddUserError('');
+    this.dom.newFullNameInput?.focus();
+  }
+
+  renderStaffModal({ users, matrix, activeShiftLabel, currentUserBadge, isMaster = false }) {
+    this.dom.staffTabBtns.forEach(btn => {
+      const tab = btn.dataset.staffTab;
+      if (tab === 'matrix' || tab === 'users') {
+        btn.style.display = isMaster ? '' : 'none';
+      }
+    });
+    if (!isMaster) {
+      this.switchStaffModalTab('auth');
+    }
+
+    if (this.dom.loginCurrentShiftDisplay && activeShiftLabel) {
+      this.dom.loginCurrentShiftDisplay.textContent = activeShiftLabel;
     }
 
     if (this.dom.quickRosterGrid) {
       this.dom.quickRosterGrid.innerHTML = users.map(u => {
         const assignSummary = u.assignmentsText || (u.isMaster ? 'Все смены · Все печи (Мастер)' : 'Резерв цеха');
-        const defaultShift = u.firstShiftId || activeShiftId;
         return `
-          <div class="roster-user-card" data-badge="${u.badgeNo}" data-pin="${u.pinCode}" data-shift="${defaultShift}">
+          <div class="roster-user-card" data-badge="${u.badgeNo}" data-pin="${u.pinCode}">
             <div class="roster-user-info">
               <span class="roster-user-name">${u.fullName}</span>
               <span class="roster-user-role">${u.role}</span>
@@ -196,9 +249,6 @@ export class AuthShiftView {
           if (this.dom.loginPinInput) {
             this.dom.loginPinInput.value = card.dataset.pin;
             this.dom.loginPinInput.focus();
-          }
-          if (this.dom.loginShiftSelect && card.dataset.shift) {
-            this.dom.loginShiftSelect.value = card.dataset.shift;
           }
           this.setLoginError('');
         });
@@ -249,7 +299,7 @@ export class AuthShiftView {
     if (this.dom.usersListTbody) {
       this.dom.usersListTbody.innerHTML = users.map(u => {
         const isCurrent = String(u.badgeNo) === String(currentUserBadge);
-        const canDelete = !isCurrent && String(u.badgeNo) !== '10105';
+        const canDelete = !isCurrent && users.length > 1;
         return `
           <tr>
             <td style="font-family:var(--font-mono); font-weight:700;">№${u.badgeNo}</td>
@@ -257,16 +307,27 @@ export class AuthShiftView {
             <td>${u.role}</td>
             <td style="font-family:var(--font-mono); color:var(--prim-codex-300);">${u.assignmentsText}</td>
             <td>
-              ${isCurrent
-                ? '<span class="codex-badge">На посту</span>'
-                : (canDelete
-                    ? `<button type="button" class="btn-table-del" data-del-badge="${u.badgeNo}">Удалить</button>`
-                    : '<span style="color:var(--text-dim); font-size:10px;">Системный</span>')
-              }
+              <div class="table-action-btns">
+                <button type="button" class="btn-table-edit" data-edit-badge="${u.badgeNo}">Изменить</button>
+                ${isCurrent
+                  ? '<span class="codex-badge">На посту</span>'
+                  : (canDelete
+                      ? `<button type="button" class="btn-table-del" data-del-badge="${u.badgeNo}">Удалить</button>`
+                      : '')
+                }
+              </div>
             </td>
           </tr>
         `;
       }).join('');
+
+      this.dom.usersListTbody.querySelectorAll('[data-edit-badge]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const badge = btn.dataset.editBadge;
+          const targetUser = users.find(u => String(u.badgeNo) === String(badge));
+          if (targetUser) this.enterEditUserMode(targetUser);
+        });
+      });
 
       this.dom.usersListTbody.querySelectorAll('[data-del-badge]').forEach(btn => {
         btn.addEventListener('click', () => {

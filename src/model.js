@@ -77,12 +77,11 @@ export class FurnaceModel {
     if (saved.shiftAssignments && typeof saved.shiftAssignments === 'object') {
       this.authShift.shiftAssignments = saved.shiftAssignments;
     }
-    if (Array.isArray(saved.incidents) && saved.incidents.length > 0) {
+    if (Array.isArray(saved.incidents)) {
       this.incidentsModule.incidents = saved.incidents;
     }
-    if (saved.activeShiftId && this.authShift.shiftsCatalog[saved.activeShiftId]) {
-      this.authShift.activeShiftId = Number(saved.activeShiftId);
-    }
+    // Смена всегда определяется автоматически по текущему системному времени
+    this.authShift.syncShiftByTime();
     // При запуске всегда требуется обязательная авторизация по номеру и паролю
     this.authShift.currentUser = null;
   }
@@ -127,25 +126,33 @@ export class FurnaceModel {
     return this.authShift.getShiftAssignmentsMatrix();
   }
 
-  authenticateUser(badgeNo, pinCode, targetShiftId) {
-    const res = this.authShift.authenticateUser(badgeNo, pinCode, targetShiftId);
+  authenticateUser(badgeNo, pinCode) {
+    const res = this.authShift.authenticateUser(badgeNo, pinCode);
     if (!res.ok) return res;
 
-    if (res.assignedFurnaceId && res.assignedFurnaceId > 0) {
-      this.telemetry.setActiveFurnace(res.assignedFurnaceId);
+    let effectiveFurnaceId = res.assignedFurnaceId;
+    if (!res.user.isMaster && (!effectiveFurnaceId || effectiveFurnaceId <= 0)) {
+      const otherAssigns = this.getUserAssignmentsAcrossShifts(res.user.badgeNo);
+      if (otherAssigns.length > 0 && otherAssigns[0].furnaceId > 0) {
+        effectiveFurnaceId = otherAssigns[0].furnaceId;
+      }
+    }
+
+    if (effectiveFurnaceId && effectiveFurnaceId > 0) {
+      this.telemetry.setActiveFurnace(effectiveFurnaceId);
     }
 
     const postDesc = res.user.isMaster
       ? 'Все печи ДСП-1..3 (Мастер смены)'
-      : (res.assignedFurnaceId ? `Ответственный за ДСП-${res.assignedFurnaceId}` : 'Дежурный оператор');
+      : (effectiveFurnaceId ? `Ответственный за ДСП-${effectiveFurnaceId}` : 'Дежурный оператор');
 
     this.addLog(
       'INFO',
       `Вход в систему: ${res.user.fullName} (Таб. №${res.user.badgeNo}) · ${res.shift.name} · ${postDesc}.`,
-      res.assignedFurnaceId ? `ДСП-${res.assignedFurnaceId}` : 'СИСТЕМА'
+      effectiveFurnaceId ? `ДСП-${effectiveFurnaceId}` : 'СИСТЕМА'
     );
 
-    return res;
+    return { ...res, assignedFurnaceId: effectiveFurnaceId };
   }
 
   endCurrentShift(reason = 'По кнопке «Конец смены»') {
@@ -243,13 +250,65 @@ export class FurnaceModel {
     return { ok: true, user: newUser };
   }
 
+  updateUser(originalBadgeNo, { badgeNo, fullName, role, pinCode, assignShiftId = 0, assignFurnaceId = 0 }) {
+    const origBadge = String(originalBadgeNo || '').trim();
+    const cleanBadge = String(badgeNo || '').trim();
+    const cleanName = String(fullName || '').trim();
+    const cleanPin = String(pinCode || '').trim();
+    const cleanRole = String(role || 'Сталевар 6 разряда').trim();
+
+    if (!cleanBadge || !cleanName || !cleanPin) {
+      return { ok: false, error: 'Заполните табельный номер, ФИО и пароль сотрудника.' };
+    }
+
+    const user = this.getUserByBadge(origBadge);
+    if (!user) {
+      return { ok: false, error: 'Сотрудник для редактирования не найден.' };
+    }
+
+    if (cleanBadge !== origBadge && this.getUserByBadge(cleanBadge)) {
+      return { ok: false, error: `Сотрудник с табельным номером №${cleanBadge} уже существует.` };
+    }
+
+    const oldName = user.fullName;
+    user.badgeNo = cleanBadge;
+    user.fullName = cleanName;
+    user.role = cleanRole;
+    user.pinCode = cleanPin;
+    user.isMaster = cleanRole.toLowerCase().includes('мастер');
+
+    // Обновляем табельный номер в матрице назначений, если он изменился
+    if (cleanBadge !== origBadge) {
+      [1, 2, 3].forEach(sId => {
+        [1, 2, 3].forEach(fId => {
+          if (String(this.authShift.shiftAssignments[sId]?.[fId]) === origBadge) {
+            this.authShift.shiftAssignments[sId][fId] = cleanBadge;
+          }
+        });
+      });
+    }
+
+    const sId = Number(assignShiftId);
+    const fId = Number(assignFurnaceId);
+    if (!user.isMaster && this.authShift.shiftsCatalog[sId] && [1, 2, 3].includes(fId)) {
+      this.authShift.shiftAssignments[sId][fId] = user.badgeNo;
+    }
+
+    this.addLog(
+      'INFO',
+      `Обновлены данные сотрудника: ${oldName} → ${user.fullName} (Таб. №${user.badgeNo}, ${user.role}).`,
+      'СИСТЕМА'
+    );
+    return { ok: true, user };
+  }
+
   deleteUser(badgeNo) {
     const cleanBadge = String(badgeNo);
-    if (cleanBadge === '10105') {
-      return { ok: false, error: 'Системный аккаунт Мастера смены (Таб. №10105) удалить нельзя.' };
-    }
     if (this.authShift.currentUser && String(this.authShift.currentUser.badgeNo) === cleanBadge) {
       return { ok: false, error: 'Нельзя удалить сотрудника, который сейчас находится на дежурстве.' };
+    }
+    if (this.authShift.users.length <= 1) {
+      return { ok: false, error: 'В системе должен оставаться хотя бы один пользователь.' };
     }
 
     const target = this.getUserByBadge(cleanBadge);
@@ -287,6 +346,10 @@ export class FurnaceModel {
 
   getActiveFurnace() {
     return this.telemetry.getActiveFurnace();
+  }
+
+  getSensorInfo(sensorKey) {
+    return this.telemetry.getSensorInfo(sensorKey);
   }
 
   setActiveFurnace(furnaceId) {
@@ -334,14 +397,16 @@ export class FurnaceModel {
       );
     }
 
-    // 2. Автоматический контроль завершения смены по расписанию (08:00, 16:00, 00:00)
-    const currentHour = now.getHours();
-    if (currentHour !== this.authShift.lastAutoShiftHour) {
-      this.authShift.lastAutoShiftHour = currentHour;
-      if ((currentHour === 8 || currentHour === 16 || currentHour === 0) && this.authShift.currentUser) {
+    // 2. Автоматический контроль смены по системному времени (08:00, 16:00, 00:00)
+    const timeShiftId = this.authShift.getShiftIdByTime(now);
+    if (timeShiftId !== this.authShift.activeShiftId) {
+      if (this.authShift.currentUser) {
         autoShiftEnded = this.endCurrentShift('Автоматическое окончание времени вахты по расписанию');
+      } else {
+        this.authShift.activeShiftId = timeShiftId;
       }
     }
+    this.authShift.lastAutoShiftHour = now.getHours();
 
     // 3. Шаг расчёта физики всех печей ДСП-1..3 (включая фоновый режим без оператора)
     this.telemetry.tickPhysics(
@@ -380,21 +445,22 @@ export class FurnaceModel {
     return { autoShiftEnded, newAlarmTriggered };
   }
 
-  triggerEmergency() {
+  triggerEmergency(code = 'АВ-01') {
     const furnace = this.getActiveFurnace();
     if (!furnace.isEmergency) {
-      this.telemetry.setEmergencyState(furnace);
+      const instruction = this.getEmergencyInstruction(code);
+      this.telemetry.setEmergencyState(furnace, instruction.code);
       const resp = this.getResponsibleForFurnace(furnace.id, this.authShift.activeShiftId);
       const incident = this.incidentsModule.recordDailyIncident(
         furnace,
         this.authShift.activeShiftId,
         resp,
-        'АВ-01',
-        'Прогар водоохлаждаемой панели свода и перегрев ванны (> 1650 °C)'
+        instruction.code,
+        instruction.title
       );
       this.addLog(
         'ALARM',
-        `АВАРИЯ [${incident.id}]: перегрев ${furnace.temperature} °C! Выведена инструкция СОП по устранению (${incident.dateKey}, Смена ${incident.shiftId}, отв. ${incident.responsibleName}).`,
+        `АВАРИЯ [${incident.id} · ${instruction.code}]: ${instruction.title}. Выведена инструкция СОП (${incident.dateKey}, Смена ${incident.shiftId}, отв. ${incident.responsibleName}).`,
         furnace.name
       );
     } else {
@@ -409,7 +475,7 @@ export class FurnaceModel {
     const resp = this.getResponsibleForFurnace(furnace.id, this.authShift.activeShiftId);
     this.addLog(
       'WARN',
-      `Инструкция СОП выполнена. АВАРИЙНОЕ ОХЛАЖДЕНИЕ запущено (${resp ? resp.fullName : '—'}): проток воды 112.5 м³/ч, мощность снижена до 32 МВт.`,
+      `Инструкция СОП выполнена. Запущена стабилизация и аварийное восстановление режима (${resp ? resp.fullName : '—'}).`,
       furnace.name
     );
     return furnace;
@@ -417,6 +483,10 @@ export class FurnaceModel {
 
   getEmergencyInstruction(code = 'АВ-01') {
     return this.incidentsModule.getEmergencyInstruction(code);
+  }
+
+  getEmergencyScenarios() {
+    return this.incidentsModule.getEmergencyScenariosList();
   }
 
   getDailyIncidentsStats(daysCount = 7) {

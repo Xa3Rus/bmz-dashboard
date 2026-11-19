@@ -21,6 +21,7 @@ export class Furnace3DView {
       viewport3D: document.getElementById('furnace3dViewport'),
       canvasContainer: document.getElementById('threeCanvasContainer'),
       overheatAlertBanner: document.getElementById('overheatAlertBanner'),
+      overheatAlertTag: document.getElementById('overheatAlertTag'),
       overheatTempText: document.getElementById('overheatTempText'),
       hudFurnaceTitle: document.getElementById('hudFurnaceTitle'),
       hudResponsibleName: document.getElementById('hudResponsibleName'),
@@ -548,8 +549,13 @@ export class Furnace3DView {
       oxygen,
       powerMw,
       waterFlow,
-      isOverheated
+      isOverheated,
+      isEmergency,
+      alertBannerTag,
+      alertBannerValue
     } = viewModel3D;
+
+    const isAlarmVisual = Boolean(isOverheated || isEmergency);
 
     this.threeState.currentTemp = temperature;
     this.threeState.currentPowerMw = powerMw;
@@ -561,7 +567,7 @@ export class Furnace3DView {
       powerMw,
       waterFlow
     };
-    this.threeState.isOverheated = isOverheated;
+    this.threeState.isOverheated = isAlarmVisual;
 
     if (this.dom.hudFurnaceTitle) {
       this.dom.hudFurnaceTitle.textContent = `${furnaceName} · ${steelGrade}`;
@@ -577,13 +583,16 @@ export class Furnace3DView {
     }
 
     if (this.dom.viewport3D) {
-      this.dom.viewport3D.classList.toggle('is-overheated', isOverheated);
+      this.dom.viewport3D.classList.toggle('is-overheated', isAlarmVisual);
     }
     if (this.dom.overheatAlertBanner) {
-      this.dom.overheatAlertBanner.classList.toggle('visible', isOverheated);
+      this.dom.overheatAlertBanner.classList.toggle('visible', isAlarmVisual);
+    }
+    if (this.dom.overheatAlertTag && alertBannerTag) {
+      this.dom.overheatAlertTag.textContent = alertBannerTag;
     }
     if (this.dom.overheatTempText) {
-      this.dom.overheatTempText.textContent = `${temperature} °C`;
+      this.dom.overheatTempText.textContent = alertBannerValue || `${temperature} °C`;
     }
 
     const normT = Math.max(0, Math.min(1, (temperature - 1500) / 220));

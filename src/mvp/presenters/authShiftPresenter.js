@@ -24,7 +24,6 @@ export class AuthShiftPresenter {
     this.onSyncAll = onSyncAll;
     this.onSaveState = onSaveState;
 
-    this.view.bindShiftSelect(shiftId => this.handleShiftSelect(shiftId));
     this.view.bindEndShift(() => this.handleEndShift());
 
     this.view.bindStaffModalEvents({
@@ -32,6 +31,7 @@ export class AuthShiftPresenter {
       onLoginSubmit: credentials => this.handleLoginSubmit(credentials),
       onAssignResponsible: (shiftId, furnaceId, badgeNo) => this.handleAssignResponsible(shiftId, furnaceId, badgeNo),
       onAddUser: newUserData => this.handleAddUserSubmit(newUserData),
+      onUpdateUser: (originalBadgeNo, updatedData) => this.handleUpdateUserSubmit(originalBadgeNo, updatedData),
       onDeleteUser: badgeNo => this.handleDeleteUser(badgeNo)
     });
   }
@@ -67,25 +67,10 @@ export class AuthShiftPresenter {
       users: usersFormatted,
       matrix,
       activeShiftId: activeShift.id,
-      currentUserBadge: currentUser?.badgeNo
+      activeShiftLabel: `${activeShift.name} · ${activeShift.hours} · ${activeShift.brigade}`,
+      currentUserBadge: currentUser?.badgeNo,
+      isMaster: Boolean(currentUser?.isMaster)
     });
-  }
-
-  handleShiftSelect(shiftId) {
-    const shiftObj = this.model.setActiveShift(shiftId);
-    if (!shiftObj) return;
-
-    if (this.onSaveState) this.onSaveState();
-    if (this.onSyncAll) this.onSyncAll();
-
-    const furnace = this.model.getActiveFurnace();
-    const resp = this.model.getResponsibleForFurnace(furnace.id, shiftObj.id);
-
-    this.view.showToast(
-      `Активна ${shiftObj.name} (${shiftObj.hours})`,
-      `На печи ${furnace.name} ответственный сталевар: ${resp ? resp.fullName : '—'} (Таб. №${resp ? resp.badgeNo : '—'}).`,
-      'success'
-    );
   }
 
   handleEndShift() {
@@ -114,8 +99,8 @@ export class AuthShiftPresenter {
     );
   }
 
-  handleLoginSubmit({ shiftId, badgeNo, pinCode }) {
-    const res = this.model.authenticateUser(badgeNo, pinCode, shiftId);
+  handleLoginSubmit({ badgeNo, pinCode }) {
+    const res = this.model.authenticateUser(badgeNo, pinCode);
     if (!res.ok) {
       this.view.setLoginError(res.error);
       return;
@@ -170,6 +155,26 @@ export class AuthShiftPresenter {
     this.view.showToast(
       'Новый пользователь добавлен',
       `${res.user.fullName} (Таб. №${res.user.badgeNo}, ${res.user.role}) зарегистрирован в системе.`,
+      'success'
+    );
+  }
+
+  handleUpdateUserSubmit(originalBadgeNo, updatedData) {
+    const res = this.model.updateUser(originalBadgeNo, updatedData);
+    if (!res.ok) {
+      this.view.setAddUserError(res.error);
+      return;
+    }
+
+    if (this.onSaveState) this.onSaveState();
+    this.view.clearAddUserForm();
+    this.view.setAddUserError('');
+    this.refreshStaffModalView();
+    if (this.onSyncAll) this.onSyncAll();
+
+    this.view.showToast(
+      'Данные сотрудника обновлены',
+      `${res.user.fullName} (Таб. №${res.user.badgeNo}, ${res.user.role}).`,
       'success'
     );
   }

@@ -121,22 +121,39 @@ export class FurnacePresenter {
     const thresholds = this.model.thresholds;
     const isOverheated = furnace.temperature > thresholds.temperature.critical;
 
-    const statusMap = {
-      normal:  'РЕЖИМ: ШТАТНЫЙ (НОРМА)',
-      warning: furnace.isCooling ? 'АВАРИЙНОЕ ОХЛАЖДЕНИЕ' : 'ВНИМАНИЕ: ПРЕДПОРОГ',
-      danger:  'ТРЕВОГА: ПЕРЕГРЕВ (> 1650 °C)'
-    };
-
-    const userAssignedFurnace = currentUser
-      ? this.model.getAssignedFurnaceForUser(currentUser.badgeNo, activeShift.id)
+    const activeEmergencyInfo = furnace.isEmergency
+      ? this.model.getEmergencyInstruction(furnace.emergencyCode || 'АВ-01')
       : null;
 
-    const postLabel = currentUser?.isMaster
+    const statusMap = {
+      normal:  'РЕЖИМ: ШТАТНЫЙ (НОРМА)',
+      warning: furnace.isCooling ? 'СТАБИЛИЗАЦИЯ РЕЖИМА' : 'ВНИМАНИЕ: ПРЕДПОРОГ',
+      danger:  activeEmergencyInfo ? `ТРЕВОГА [${activeEmergencyInfo.code}]: ${activeEmergencyInfo.sensorName.toUpperCase()}` : 'ТРЕВОГА: ПЕРЕГРЕВ (> 1650 °C)'
+    };
+
+    const isMaster = Boolean(currentUser?.isMaster);
+    let allowedFurnaceId = null;
+    if (currentUser && !isMaster) {
+      const currentShiftFurnace = this.model.getAssignedFurnaceForUser(currentUser.badgeNo, activeShift.id);
+      if (currentShiftFurnace && currentShiftFurnace > 0) {
+        allowedFurnaceId = currentShiftFurnace;
+      } else {
+        const otherAssigns = this.model.getUserAssignmentsAcrossShifts(currentUser.badgeNo);
+        allowedFurnaceId = (otherAssigns.length > 0 && otherAssigns[0].furnaceId > 0)
+          ? otherAssigns[0].furnaceId
+          : furnace.id;
+      }
+      if (furnace.id !== allowedFurnaceId) {
+        this.model.telemetry.setActiveFurnace(allowedFurnaceId);
+      }
+    }
+
+    const postLabel = isMaster
       ? 'Все печи (Мастер смены)'
-      : (userAssignedFurnace ? `Пост: ДСП-${userAssignedFurnace}` : 'Дежурный оператор');
+      : (allowedFurnaceId ? `Пост: ДСП-${allowedFurnaceId}` : 'Дежурный оператор');
 
     this.view.renderHeader({
-      activeId: furnace.id,
+      activeId: allowedFurnaceId || furnace.id,
       activeShiftId: activeShift.id,
       activeShiftLabel: `${activeShift.name.toUpperCase()} · ${activeShift.hours}`,
       furnacesSummary: allSummary,
@@ -154,6 +171,8 @@ export class FurnacePresenter {
         ? `Таб. №${currentUser.badgeNo} · Смена ${activeShift.id} · ${postLabel}`
         : 'Требуется ввод табельного № и пароля',
       isAuthenticated,
+      isMaster,
+      allowedFurnaceId,
       todayAlarmsCount: dailyStats.todayTotal,
       systemStatus: furnace.status,
       systemStatusLabel: statusMap[furnace.status] || statusMap.normal
@@ -202,6 +221,7 @@ export class FurnacePresenter {
       heatBalance: furnace.heatBalance,
       waterFlow: furnace.waterFlow,
       isEmergency: furnace.isEmergency,
+      emergencyCode: furnace.emergencyCode,
       isCooling: furnace.isCooling,
       showCoolingBtn: furnace.isEmergency || furnace.isCooling || isOverheated
     });
@@ -215,6 +235,14 @@ export class FurnacePresenter {
       currentTemp: furnace.temperature
     });
 
+    const alertValueMap = {
+      temperature: `${furnace.temperature} °C`,
+      current: `${furnace.current.toFixed(1)} кА`,
+      pressure: `${furnace.pressure} Па`,
+      energy: `${furnace.energy.toFixed(2)} МВт·ч`,
+      oxygen: `${furnace.oxygen} м³/ч`
+    };
+
     const shortResp = responsible ? this.model._formatShortName(responsible.fullName) : '—';
     this.view.update3DFurnace({
       furnaceName: furnace.fullName,
@@ -226,7 +254,10 @@ export class FurnacePresenter {
       oxygen: furnace.oxygen,
       powerMw: furnace.powerMw,
       waterFlow: furnace.waterFlow,
-      isOverheated
+      isOverheated,
+      isEmergency: furnace.isEmergency,
+      alertBannerTag: activeEmergencyInfo ? activeEmergencyInfo.shortBadge : 'АВАРИЯ! ПЕРЕГРЕВ > 1650 °C',
+      alertBannerValue: activeEmergencyInfo ? (alertValueMap[activeEmergencyInfo.sensorKey] || `${furnace.temperature} °C`) : `${furnace.temperature} °C`
     });
 
     this.view.renderDailyAlarmsWidget(dailyStats, selectedDateKey => {

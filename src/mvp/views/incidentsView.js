@@ -18,6 +18,7 @@ export class IncidentsView {
       alarmInstructionOverlay: document.getElementById('alarmInstructionOverlay'),
       sopAlarmTitle: document.getElementById('sopAlarmTitle'),
       sopAlarmSubtitle: document.getElementById('sopAlarmSubtitle'),
+      sopMetricLabel: document.getElementById('sopMetricLabel'),
       sopLiveTemp: document.getElementById('sopLiveTemp'),
       sopReactionTimer: document.getElementById('sopReactionTimer'),
       sopCauseText: document.getElementById('sopCauseText'),
@@ -27,6 +28,10 @@ export class IncidentsView {
       sopStepsList: document.getElementById('sopStepsList'),
       btnMinimizeSopOverlay: document.getElementById('btnMinimizeSopOverlay'),
       btnExecuteSopCooling: document.getElementById('btnExecuteSopCooling'),
+
+      emergencyPickerModal: document.getElementById('emergencyPickerModal'),
+      btnCloseEmergencyPicker: document.getElementById('btnCloseEmergencyPicker'),
+      emergencyScenariosGrid: document.getElementById('emergencyScenariosGrid'),
 
       dailyTodayCount: document.getElementById('dailyTodayCount'),
       dailyWeekCount: document.getElementById('dailyWeekCount'),
@@ -62,6 +67,78 @@ export class IncidentsView {
     this.dom.btnShowSopOverlay?.addEventListener('click', () => {
       this.dom.alarmInstructionOverlay?.classList.remove('hidden');
     });
+
+    this.dom.btnCloseEmergencyPicker?.addEventListener('click', () => {
+      this.closeEmergencyPicker();
+    });
+
+    this.dom.emergencyPickerModal?.addEventListener('click', e => {
+      if (e.target === this.dom.emergencyPickerModal) this.closeEmergencyPicker();
+    });
+  }
+
+  openEmergencyPicker(scenarios, onSelectCode) {
+    if (!this.dom.emergencyPickerModal || !this.dom.emergencyScenariosGrid) return;
+
+    const rowsMeta = [
+      { key: 'temperature', name: 'Температура расплава', norm: '1540–1630 °C' },
+      { key: 'current',     name: 'Ток электродов (3Ф)',  norm: '42–58 кА' },
+      { key: 'pressure',    name: 'Давление под сводом',  norm: '35–56 Па' },
+      { key: 'energy',      name: 'Расход электроэнергии', norm: '≤ 72 МВт·ч' },
+      { key: 'oxygen',      name: 'Расход кислорода (O₂)', norm: '1800–3900 м³/ч' }
+    ];
+
+    const shortLabels = {
+      'АВ-01': { label: 'Перегрев ванны',          limit: '> 1650 °C' },
+      'АВ-02': { label: 'Переохлаждение ванны',    limit: '< 1525 °C' },
+      'АВ-03': { label: 'Перегрузка тока (КЗ)',    limit: '> 63 кА' },
+      'АВ-04': { label: 'Обрыв дуги / падение тока', limit: '< 34 кА' },
+      'АВ-05': { label: 'Избыточное давление',     limit: '> 65 Па' },
+      'АВ-06': { label: 'Критическое разрежение',  limit: '< 25 Па' },
+      'АВ-07': { label: 'Перерасход за плавку',    limit: '> 82 МВт·ч' },
+      'АВ-08': { label: 'Падение подачи O₂',       limit: '< 1000 м³/ч' },
+      'АВ-09': { label: 'Избыток подачи O₂',       limit: '> 4300 м³/ч' }
+    };
+
+    const renderBtn = (sc, dirClass) => {
+      if (!sc) return '<span class="picker-empty-slot">—</span>';
+      const meta = shortLabels[sc.code] || { label: sc.title, limit: sc.code };
+      return `
+        <button type="button" class="picker-action-btn ${dirClass}" data-scenario-code="${sc.code}">
+          <span class="picker-action-title">${meta.label}</span>
+          <span class="picker-action-meta">${sc.code} · ${meta.limit}</span>
+        </button>
+      `;
+    };
+
+    this.dom.emergencyScenariosGrid.innerHTML = rowsMeta.map(row => {
+      const lowSc = scenarios.find(s => s.sensorKey === row.key && s.direction === 'low');
+      const highSc = scenarios.find(s => s.sensorKey === row.key && s.direction === 'high');
+      return `
+        <div class="picker-row">
+          <div class="picker-param-info">
+            <span class="picker-param-name">${row.name}</span>
+            <span class="picker-param-norm">Норма: ${row.norm}</span>
+          </div>
+          <div>${renderBtn(lowSc, 'is-low')}</div>
+          <div>${renderBtn(highSc, 'is-high')}</div>
+        </div>
+      `;
+    }).join('');
+
+    this.dom.emergencyScenariosGrid.querySelectorAll('[data-scenario-code]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.dataset.scenarioCode;
+        this.closeEmergencyPicker();
+        if (onSelectCode) onSelectCode(code);
+      });
+    });
+
+    this.dom.emergencyPickerModal.classList.remove('hidden');
+  }
+
+  closeEmergencyPicker() {
+    this.dom.emergencyPickerModal?.classList.add('hidden');
   }
 
   bindExecuteSopCooling(handler) {
@@ -102,7 +179,7 @@ export class IncidentsView {
     });
   }
 
-  showAlarmInstructionOverlay({ furnaceName, temperature, responsibleName, responsibleBadge, shiftName, instruction }) {
+  showAlarmInstructionOverlay({ furnaceName, metricLabel, metricValueText, responsibleName, responsibleBadge, shiftName, instruction }) {
     if (!this.dom.alarmInstructionOverlay || !instruction) return;
 
     if (this.dom.sopAlarmTitle) {
@@ -111,8 +188,11 @@ export class IncidentsView {
     if (this.dom.sopAlarmSubtitle) {
       this.dom.sopAlarmSubtitle.textContent = `Код: ${instruction.code} · ${shiftName} · Ответственный сталевар: ${responsibleName} (Таб. №${responsibleBadge})`;
     }
+    if (this.dom.sopMetricLabel) {
+      this.dom.sopMetricLabel.textContent = metricLabel || instruction.metricLabel || 'ПОКАЗАТЕЛЬ';
+    }
     if (this.dom.sopLiveTemp) {
-      this.dom.sopLiveTemp.textContent = `${temperature} °C`;
+      this.dom.sopLiveTemp.textContent = metricValueText || '—';
     }
     if (this.dom.sopCauseText) {
       this.dom.sopCauseText.textContent = instruction.cause;
@@ -167,11 +247,11 @@ export class IncidentsView {
     this.dom.alarmInstructionOverlay.classList.remove('hidden');
   }
 
-  updateSopLiveTemperature(temperature, isOverheated) {
+  updateSopLiveTemperature(metricValueText, isEmergencyActive) {
     if (this.dom.sopLiveTemp) {
-      this.dom.sopLiveTemp.textContent = `${temperature} °C`;
+      this.dom.sopLiveTemp.textContent = metricValueText;
     }
-    if (!isOverheated) {
+    if (!isEmergencyActive) {
       this.hideAlarmInstructionOverlay();
     }
   }

@@ -14,12 +14,13 @@ export class TelemetryView {
     this.dom = {
       clock: document.getElementById('headerClock'),
       furnaceTabs: document.querySelectorAll('.furnace-tab'),
-      shiftQuickBtns: document.querySelectorAll('[data-shift-select]'),
       headerOperatorAvatar: document.getElementById('headerOperatorAvatar'),
       headerOperatorName: document.getElementById('headerOperatorName'),
       headerOperatorRole: document.getElementById('headerOperatorRole'),
       headerTodayAlarmsBadge: document.getElementById('headerTodayAlarmsBadge'),
       btnEndShift: document.getElementById('btnEndShift'),
+      btnOpenStaffAssign: document.getElementById('btnOpenStaffAssign'),
+      btnQuickAssignResp: document.getElementById('btnQuickAssignResp'),
       modalLivePlcTicker: document.getElementById('modalLivePlcTicker'),
       systemStatusPill: document.getElementById('systemStatusPill'),
       systemStatusText: document.getElementById('systemStatusText'),
@@ -82,23 +83,90 @@ export class TelemetryView {
       chartSubInfo: document.getElementById('chartSubInfo'),
       logList: document.getElementById('eventLogList'),
       logCountBadge: document.getElementById('logCountBadge'),
-      btnExportCsv: document.getElementById('btnExportCsv'),
-      btnExportIncidentsCsv: document.getElementById('btnExportIncidentsCsv'),
-      toastContainer: document.getElementById('toastContainer')
+      toastContainer: document.getElementById('toastContainer'),
+
+      sensorDetailModal: document.getElementById('sensorDetailModal'),
+      btnCloseSensorModal: document.getElementById('btnCloseSensorModal'),
+      sensorModalTitle: document.getElementById('sensorModalTitle'),
+      sensorModalValue: document.getElementById('sensorModalValue'),
+      sensorModalStatusBadge: document.getElementById('sensorModalStatusBadge'),
+      sensorModalNormalRange: document.getElementById('sensorModalNormalRange'),
+      sensorModalCriticalThreshold: document.getElementById('sensorModalCriticalThreshold'),
+      sensorModalFurnaceInfo: document.getElementById('sensorModalFurnaceInfo'),
+      sensorModalDescription: document.getElementById('sensorModalDescription'),
+      sensorModalBelowTitle: document.getElementById('sensorModalBelowTitle'),
+      sensorModalBelowList: document.getElementById('sensorModalBelowList'),
+      sensorModalBelowAction: document.getElementById('sensorModalBelowAction'),
+      sensorModalAboveTitle: document.getElementById('sensorModalAboveTitle'),
+      sensorModalAboveList: document.getElementById('sensorModalAboveList'),
+      sensorModalAboveAction: document.getElementById('sensorModalAboveAction')
     };
 
+    this.activeDetailSensorKey = null;
+    this._initSensorModalClose();
     this._initChart();
+  }
+
+  _initSensorModalClose() {
+    this.dom.btnCloseSensorModal?.addEventListener('click', () => this.closeSensorDetailModal());
+    this.dom.sensorDetailModal?.addEventListener('click', e => {
+      if (e.target === this.dom.sensorDetailModal) this.closeSensorDetailModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && this.activeDetailSensorKey) {
+        this.closeSensorDetailModal();
+      }
+    });
+  }
+
+  bindSensorCardClick(handler) {
+    Object.entries(this.dom.cards).forEach(([key, domCard]) => {
+      if (!domCard?.card) return;
+      domCard.card.title = 'Нажмите для подробной информации о показателе';
+      domCard.card.addEventListener('click', () => handler(key));
+    });
+  }
+
+  openSensorDetailModal(detail) {
+    if (!this.dom.sensorDetailModal || !detail) return;
+    this.activeDetailSensorKey = detail.key;
+
+    if (this.dom.sensorModalTitle) this.dom.sensorModalTitle.textContent = detail.title;
+    if (this.dom.sensorModalValue) this.dom.sensorModalValue.textContent = detail.formattedValue;
+    if (this.dom.sensorModalStatusBadge) {
+      this.dom.sensorModalStatusBadge.textContent = detail.statusLabel;
+      this.dom.sensorModalStatusBadge.dataset.status = detail.status;
+    }
+    if (this.dom.sensorModalNormalRange) this.dom.sensorModalNormalRange.textContent = detail.normalRange;
+    if (this.dom.sensorModalCriticalThreshold) this.dom.sensorModalCriticalThreshold.textContent = detail.criticalThreshold;
+    if (this.dom.sensorModalFurnaceInfo) this.dom.sensorModalFurnaceInfo.textContent = detail.furnaceInfo;
+    if (this.dom.sensorModalDescription) this.dom.sensorModalDescription.textContent = detail.description;
+
+    if (this.dom.sensorModalBelowTitle) this.dom.sensorModalBelowTitle.textContent = detail.belowTitle;
+    if (this.dom.sensorModalBelowList) {
+      this.dom.sensorModalBelowList.innerHTML = (detail.belowEffects || [])
+        .map(text => `<li>${text}</li>`).join('');
+    }
+    if (this.dom.sensorModalBelowAction) this.dom.sensorModalBelowAction.textContent = detail.belowAction;
+
+    if (this.dom.sensorModalAboveTitle) this.dom.sensorModalAboveTitle.textContent = detail.aboveTitle;
+    if (this.dom.sensorModalAboveList) {
+      this.dom.sensorModalAboveList.innerHTML = (detail.aboveEffects || [])
+        .map(text => `<li>${text}</li>`).join('');
+    }
+    if (this.dom.sensorModalAboveAction) this.dom.sensorModalAboveAction.textContent = detail.aboveAction;
+
+    this.dom.sensorDetailModal.classList.remove('hidden');
+  }
+
+  closeSensorDetailModal() {
+    this.activeDetailSensorKey = null;
+    this.dom.sensorDetailModal?.classList.add('hidden');
   }
 
   bindFurnaceSelect(handler) {
     this.dom.furnaceTabs.forEach(btn => {
       btn.addEventListener('click', () => handler(Number(btn.dataset.furnaceId)));
-    });
-  }
-
-  bindShiftSelect(handler) {
-    this.dom.shiftQuickBtns.forEach(btn => {
-      btn.addEventListener('click', () => handler(Number(btn.dataset.shiftSelect)));
     });
   }
 
@@ -112,11 +180,6 @@ export class TelemetryView {
 
   bindEmergencyCooling(handler) {
     this.dom.btnCooling?.addEventListener('click', () => handler());
-  }
-
-  bindExportCsv(handler) {
-    this.dom.btnExportCsv?.addEventListener('click', () => handler());
-    this.dom.btnExportIncidentsCsv?.addEventListener('click', () => handler());
   }
 
   updateClock(timeString) {
@@ -139,6 +202,8 @@ export class TelemetryView {
       operatorInitials,
       operatorRoleLine,
       isAuthenticated,
+      isMaster,
+      allowedFurnaceId,
       todayAlarmsCount,
       systemStatus,
       systemStatusLabel
@@ -147,6 +212,8 @@ export class TelemetryView {
     this.dom.furnaceTabs.forEach(tab => {
       const id = Number(tab.dataset.furnaceId);
       const summary = furnacesSummary.find(f => f.id === id);
+      const isVisible = !isAuthenticated || isMaster || !allowedFurnaceId || id === Number(allowedFurnaceId);
+      tab.style.display = isVisible ? '' : 'none';
       tab.classList.toggle('active', id === activeId);
 
       if (summary) {
@@ -158,10 +225,6 @@ export class TelemetryView {
       }
     });
 
-    this.dom.shiftQuickBtns.forEach(btn => {
-      btn.classList.toggle('active', Number(btn.dataset.shiftSelect) === Number(activeShiftId));
-    });
-
     if (this.dom.headerOperatorAvatar) this.dom.headerOperatorAvatar.textContent = operatorInitials;
     if (this.dom.headerOperatorName) this.dom.headerOperatorName.textContent = operatorName;
     if (this.dom.headerOperatorRole) this.dom.headerOperatorRole.textContent = operatorRoleLine;
@@ -170,10 +233,16 @@ export class TelemetryView {
     if (this.dom.btnEndShift) {
       this.dom.btnEndShift.style.display = isAuthenticated ? 'inline-flex' : 'none';
     }
+    if (this.dom.btnOpenStaffAssign) {
+      this.dom.btnOpenStaffAssign.style.display = isMaster ? 'inline-flex' : 'none';
+    }
+    if (this.dom.btnQuickAssignResp) {
+      this.dom.btnQuickAssignResp.style.display = isMaster ? '' : 'none';
+    }
 
     if (this.dom.modalLivePlcTicker && Array.isArray(furnacesSummary)) {
       const tickerStr = furnacesSummary.map(f => `${f.name} (${f.temperature} °C)`).join(' · ');
-      this.dom.modalLivePlcTicker.textContent = `Фоновый опрос ПЛК 24/7 активен: ${tickerStr}`;
+      this.dom.modalLivePlcTicker.textContent = `Фоновый опрос ПЛК активен: ${tickerStr}`;
     }
 
     if (this.dom.activeShiftBadge) this.dom.activeShiftBadge.textContent = activeShiftLabel;
@@ -209,6 +278,16 @@ export class TelemetryView {
       if (domCard.sub) domCard.sub.textContent = item.subtitle;
     });
 
+    // Живое обновление значения и статуса в открытой карточке подробной справки
+    if (this.activeDetailSensorKey && cards[this.activeDetailSensorKey]) {
+      const liveItem = cards[this.activeDetailSensorKey];
+      if (this.dom.sensorModalValue) this.dom.sensorModalValue.textContent = liveItem.formattedValue;
+      if (this.dom.sensorModalStatusBadge) {
+        this.dom.sensorModalStatusBadge.textContent = liveItem.statusLabel;
+        this.dom.sensorModalStatusBadge.dataset.status = liveItem.status;
+      }
+    }
+
     if (this.dom.arcHeatVal) this.dom.arcHeatVal.textContent = `${heatBalance.arcHeatMw} МВт`;
     if (this.dom.chemHeatVal) this.dom.chemHeatVal.textContent = `${heatBalance.chemHeatMw} МВт`;
     if (this.dom.lossHeatVal) this.dom.lossHeatVal.textContent = `${heatBalance.lossMw} МВт`;
@@ -220,7 +299,7 @@ export class TelemetryView {
       const labelEl = this.dom.btnEmergency.querySelector('.btn-label');
       if (labelEl) {
         labelEl.textContent = isEmergency
-          ? 'АВАРИЯ АКТИВНА (ПЕРЕГРЕВ > 1650 °C)'
+          ? `АВАРИЯ АКТИВНА (${sensorsViewModel.emergencyCode || 'ЧС'}) — УСТРАНИТЬ`
           : 'Режим симуляции аварии';
       }
     }
@@ -231,8 +310,8 @@ export class TelemetryView {
       const coolText = this.dom.btnCooling.querySelector('.btn-cooling-label');
       if (coolText) {
         coolText.textContent = isCooling
-          ? 'Идёт форсированное охлаждение свода...'
-          : 'Аварийное охлаждение';
+          ? 'Идёт стабилизация режима печи...'
+          : 'Аварийное восстановление';
       }
     }
   }
@@ -352,7 +431,7 @@ export class TelemetryView {
             }
           },
           y: {
-            min: 1520,
+            min: 1480,
             max: 1730,
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
             ticks: {

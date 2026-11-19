@@ -35,8 +35,8 @@ export class FurnaceView {
     this.telemetryView.bindFurnaceSelect(handler);
   }
 
-  bindShiftSelect(handler) {
-    this.telemetryView.bindShiftSelect(handler);
+  bindSensorCardClick(handler) {
+    this.telemetryView.bindSensorCardClick(handler);
   }
 
   bindEndShift(handler) {
@@ -60,10 +60,6 @@ export class FurnaceView {
     this.furnace3DView.bindRenderModes(handler);
   }
 
-  bindExportCsv(handler) {
-    this.telemetryView.bindExportCsv(handler);
-  }
-
   bindStaffModalEvents(callbacks) {
     this.authShiftView.bindStaffModalEvents(callbacks);
   }
@@ -85,6 +81,10 @@ export class FurnaceView {
     this.telemetryView.renderSensorCards(sensorsViewModel);
   }
 
+  openSensorDetailModal(detailViewModel) {
+    this.telemetryView.openSensorDetailModal(detailViewModel);
+  }
+
   renderChart(chartViewModel) {
     this.telemetryView.renderChart(chartViewModel);
   }
@@ -99,7 +99,10 @@ export class FurnaceView {
 
   update3DFurnace(viewModel3D) {
     this.furnace3DView.update3DFurnace(viewModel3D);
-    this.incidentsView.updateSopLiveTemperature(viewModel3D.temperature, viewModel3D.isOverheated);
+    this.incidentsView.updateSopLiveTemperature(
+      viewModel3D.alertBannerValue || `${viewModel3D.temperature} °C`,
+      Boolean(viewModel3D.isOverheated || viewModel3D.isEmergency)
+    );
   }
 
   setCameraPreset(presetName) {
@@ -140,6 +143,10 @@ export class FurnaceView {
 
   hideAlarmInstructionOverlay() {
     this.incidentsView.hideAlarmInstructionOverlay();
+  }
+
+  openEmergencyPicker(scenarios, onSelectCode) {
+    this.incidentsView.openEmergencyPicker(scenarios, onSelectCode);
   }
 
   openIncidentsModal() {

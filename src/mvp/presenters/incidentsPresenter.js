@@ -44,11 +44,21 @@ export class IncidentsPresenter {
   showAlarmInstructionForFurnace(furnace) {
     const shift = this.model.getActiveShift();
     const resp = this.model.getResponsibleForFurnace(furnace.id, shift.id);
-    const instruction = this.model.getEmergencyInstruction('АВ-01');
+    const code = furnace.emergencyCode || 'АВ-01';
+    const instruction = this.model.getEmergencyInstruction(code);
+
+    const metricMap = {
+      temperature: `${furnace.temperature} °C`,
+      current: `${furnace.current.toFixed(1)} кА`,
+      pressure: `${furnace.pressure} Па`,
+      energy: `${furnace.energy.toFixed(2)} МВт·ч`,
+      oxygen: `${furnace.oxygen} м³/ч`
+    };
 
     this.view.showAlarmInstructionOverlay({
       furnaceName: furnace.name,
-      temperature: furnace.temperature,
+      metricLabel: instruction.metricLabel || 'ПОКАЗАТЕЛЬ',
+      metricValueText: metricMap[instruction.sensorKey] || `${furnace.temperature} °C`,
       responsibleName: resp ? resp.fullName : 'Не назначен',
       responsibleBadge: resp ? resp.badgeNo : '—',
       shiftName: shift.name,
@@ -57,18 +67,32 @@ export class IncidentsPresenter {
   }
 
   handleEmergencySimulate() {
-    const furnace = this.model.triggerEmergency();
+    const activeFurnace = this.model.getActiveFurnace();
+    if (activeFurnace.isEmergency) {
+      this.handleEmergencyCooling();
+      return;
+    }
+
+    const scenarios = this.model.getEmergencyScenarios();
+    this.view.openEmergencyPicker(scenarios, selectedCode => {
+      this.triggerEmergencyScenario(selectedCode);
+    });
+  }
+
+  triggerEmergencyScenario(code) {
+    const furnace = this.model.triggerEmergency(code);
     if (this.onSaveState) this.onSaveState();
     if (this.onSyncAll) this.onSyncAll();
 
     if (furnace.isEmergency) {
       this.showAlarmInstructionForFurnace(furnace);
 
+      const instruction = this.model.getEmergencyInstruction(furnace.emergencyCode || code);
       const resp = this.model.getResponsibleForFurnace(furnace.id);
       const shift = this.model.getActiveShift();
       this.view.showToast(
-        `АВАРИЯ НА ПЕЧИ ${furnace.name}!`,
-        `Температура ${furnace.temperature} °C (> 1650 °C). Выведена инструкция СОП по устранению. Ответственный (${shift.name}): ${resp ? resp.fullName : '—'}.`,
+        `АВАРИЯ [${instruction.code}] НА ПЕЧИ ${furnace.name}!`,
+        `${instruction.title}. Выведена инструкция СОП. Ответственный (${shift.name}): ${resp ? resp.fullName : '—'}.`,
         'danger'
       );
     }
@@ -81,8 +105,8 @@ export class IncidentsPresenter {
     if (this.onSyncAll) this.onSyncAll();
 
     this.view.showToast(
-      `Инструкция выполнена · Аварийное охлаждение (${furnace.name})`,
-      'Форсирована подача охлаждающей воды на панели свода (112.5 м³/ч) и снижена мощность трансформатора до 32 МВт.',
+      `Инструкция выполнена · Стабилизация режима (${furnace.name})`,
+      'Запущено аварийное восстановление параметров печи и возврат датчиков в штатный диапазон.',
       'warning'
     );
   }

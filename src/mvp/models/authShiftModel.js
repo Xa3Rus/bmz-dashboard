@@ -23,9 +23,9 @@ export class AuthShiftModel {
       3: { id: 3, name: 'Смена 3 (Ночная)',   hours: '00:00–08:00', brigade: 'Бригада В' }
     };
 
-    const hour = new Date().getHours();
-    this.activeShiftId = (hour >= 8 && hour < 16) ? 1 : ((hour >= 16 && hour <= 23) ? 2 : 3);
-    this.lastAutoShiftHour = hour;
+    const now = new Date();
+    this.activeShiftId = this.getShiftIdByTime(now);
+    this.lastAutoShiftHour = now.getHours();
 
     this.users = [
       { badgeNo: '10105', fullName: 'Лукашов Василий Григорьевич', role: 'Мастер смены ЭСПЦ-2', pinCode: '0000', isMaster: true },
@@ -54,11 +54,24 @@ export class AuthShiftModel {
     this.currentUser = null;
   }
 
+  getShiftIdByTime(date = new Date()) {
+    const hour = date.getHours();
+    if (hour >= 8 && hour < 16) return 1;
+    if (hour >= 16 && hour <= 23) return 2;
+    return 3;
+  }
+
+  syncShiftByTime(date = new Date()) {
+    this.activeShiftId = this.getShiftIdByTime(date);
+    return this.activeShiftId;
+  }
+
   getUserByBadge(badgeNo) {
     return this.users.find(u => String(u.badgeNo) === String(badgeNo)) || null;
   }
 
   getActiveShift() {
+    this.syncShiftByTime();
     return this.shiftsCatalog[this.activeShiftId] || this.shiftsCatalog[1];
   }
 
@@ -130,10 +143,10 @@ export class AuthShiftModel {
     return matrix;
   }
 
-  authenticateUser(badgeNo, pinCode, targetShiftId = this.activeShiftId) {
+  authenticateUser(badgeNo, pinCode) {
     const cleanBadge = String(badgeNo || '').trim();
     const cleanPin = String(pinCode || '').trim();
-    const shiftId = Number(targetShiftId) || this.activeShiftId;
+    const currentShiftId = this.syncShiftByTime();
 
     const user = this.getUserByBadge(cleanBadge);
     if (!user) {
@@ -143,18 +156,8 @@ export class AuthShiftModel {
       return { ok: false, error: 'Неверный пароль (ПИН-код) пользователя.' };
     }
 
-    let assignedFurnaceId = this.getAssignedFurnaceForUser(user.badgeNo, shiftId);
-    let effectiveShiftId = shiftId;
-
-    if (!user.isMaster && assignedFurnaceId === null) {
-      const otherShifts = this.getUserAssignmentsAcrossShifts(user.badgeNo);
-      if (otherShifts.length > 0) {
-        effectiveShiftId = otherShifts[0].shiftId;
-        assignedFurnaceId = otherShifts[0].furnaceId;
-      }
-    }
-
-    this.activeShiftId = effectiveShiftId;
+    const assignedFurnaceId = this.getAssignedFurnaceForUser(user.badgeNo, currentShiftId);
+    this.activeShiftId = currentShiftId;
     this.currentUser = user;
 
     return {
@@ -167,8 +170,8 @@ export class AuthShiftModel {
 
   endCurrentShift(activeFurnaceId) {
     const prevUser = this.currentUser;
-    const prevShift = this.getActiveShift();
-    const nextShiftId = this.activeShiftId === 1 ? 2 : (this.activeShiftId === 2 ? 3 : 1);
+    const prevShift = this.shiftsCatalog[this.activeShiftId] || this.getActiveShift();
+    const nextShiftId = this.syncShiftByTime();
     const nextShift = this.shiftsCatalog[nextShiftId];
     const nextResponsible = this.getResponsibleForFurnace(activeFurnaceId, nextShiftId);
 
