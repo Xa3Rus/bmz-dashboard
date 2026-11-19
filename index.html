@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>АСУ ТП ДСП | ОАО «БМЗ» — Круглосуточный мониторинг печей ЭСПЦ-2 (24/7)</title>
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- Подключение Chart.js для живого графика динамики температуры -->
+  <script src="./node_modules/chart.js/dist/chart.umd.min.js"></script>
+
+  <!-- Карта импортов ES6 для Three.js, OrbitControls и GLTFLoader -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./node_modules/three/build/three.module.js",
+        "three/addons/": "./node_modules/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="scada-shell">
+    <!-- ======================================================================
+         1. ШАПКА (HEADER): Брендинг БМЗ, Переключатель ДСП-1..3, Смены, Конец смены
+         ====================================================================== -->
+    <header class="scada-header">
+      <div class="brand-block">
+        <div class="brand-logo" aria-hidden="true">
+          <span class="brand-logo-code">БМЗ</span>
+        </div>
+        <div class="brand-titles">
+          <div class="brand-title-row">
+            <h1 class="brand-title">АСУ ТП ДСП <span class="brand-divider">|</span> ОАО «БМЗ»</h1>
+            <span class="codex-badge">MVP · 24/7 SCADA</span>
+          </div>
+          <p class="brand-subtitle">ЭСПЦ-2 · г. Жлобин · Сменный контроль ДСП-135 и суточный учёт аварий</p>
+        </div>
+      </div>
+
+      <!-- Переключатель печей: ДСП-1, ДСП-2, ДСП-3 (с ФИО ответственного на текущей смене) -->
+      <nav class="furnace-switcher" aria-label="Выбор сталеплавильной печи">
+        <button class="furnace-tab active" data-furnace-id="1" data-status="normal" type="button">
+          <span class="tab-dot"></span>
+          <div class="tab-info">
+            <span class="tab-name">ДСП-1 <em class="tab-grade">Ст3сп</em></span>
+            <span class="tab-resp" id="tabResp-1">Отв: Иванов А.В.</span>
+          </div>
+          <span class="tab-temp">1588 °C</span>
+        </button>
+
+        <button class="furnace-tab" data-furnace-id="2" data-status="normal" type="button">
+          <span class="tab-dot"></span>
+          <div class="tab-info">
+            <span class="tab-name">ДСП-2 <em class="tab-grade">09Г2С</em></span>
+            <span class="tab-resp" id="tabResp-2">Отв: Петров С.Н.</span>
+          </div>
+          <span class="tab-temp">1618 °C</span>
+        </button>
+
+        <button class="furnace-tab" data-furnace-id="3" data-status="normal" type="button">
+          <span class="tab-dot"></span>
+          <div class="tab-info">
+            <span class="tab-name">ДСП-3 <em class="tab-grade">К70</em></span>
+            <span class="tab-resp" id="tabResp-3">Отв: Ковалёв Д.И.</span>
+          </div>
+          <span class="tab-temp">1572 °C</span>
+        </button>
+      </nav>
+
+      <!-- Блок управления сменами, авторизацией, кнопкой «Конец смены» и учётом аварий -->
+      <div class="header-telemetry-meta">
+        <!-- Быстрый переключатель текущей рабочей смены (Смена 1 / 2 / 3) -->
+        <div class="shift-selector-pill">
+          <span class="shift-pill-label">СМЕНА ВАХТЫ</span>
+          <div class="shift-pill-btns">
+            <button class="shift-quick-btn active" data-shift-select="1" type="button" title="Смена 1 (08:00–16:00)">СМ-1</button>
+            <button class="shift-quick-btn" data-shift-select="2" type="button" title="Смена 2 (16:00–00:00)">СМ-2</button>
+            <button class="shift-quick-btn" data-shift-select="3" type="button" title="Смена 3 (00:00–08:00)">СМ-3</button>
+          </div>
+        </div>
+
+        <!-- Карточка текущего авторизованного оператора -->
+        <div class="operator-badge-box" id="btnOpenAuthModal" title="Текущий оператор поста АСУ ТП">
+          <div class="operator-avatar" id="headerOperatorAvatar">--</div>
+          <div class="operator-meta">
+            <span class="operator-name" id="headerOperatorName">Ожидание входа...</span>
+            <span class="operator-role" id="headerOperatorRole">Введите табельный № и пароль</span>
+          </div>
+        </div>
+
+        <!-- Кнопка «Конец смены» (вылогинивает оператора без остановки опроса печей) -->
+        <button class="hdr-action-btn hdr-btn-end-shift" id="btnEndShift" type="button" title="Завершить текущую смену, сдать вахту и передать пост следующему оператору без остановки опроса ПЛК">
+          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Конец смены</span>
+        </button>
+
+        <!-- Кнопки открытия окон «Штат и Печи» и «Аварии по дням» -->
+        <div class="header-action-btns">
+          <button class="hdr-action-btn" id="btnOpenStaffAssign" type="button" title="Назначение ответственных за печи по сменам и добавление пользователей">
+            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span>Штат и Печи</span>
+          </button>
+
+          <button class="hdr-action-btn hdr-action-alarms" id="btnOpenIncidentsModal" type="button" title="Суточный учёт и аналитика аварий по дням (24/7)">
+            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <span>Аварии по дням</span>
+            <span class="hdr-alarm-counter" id="headerTodayAlarmsBadge">1</span>
+          </button>
+        </div>
+
+        <!-- Индикатор ПЛК Online и часы реального времени -->
+        <div class="plc-online-box">
+          <div class="plc-line">
+            <span class="plc-online-dot"></span>
+            <span class="plc-online-text">ПЛК: Online</span>
+          </div>
+          <div class="clock-line" id="headerClock">00.00.0000 · 00:00:00</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ======================================================================
+         ОСНОВНАЯ РАБОЧАЯ ОБЛАСТЬ ДАШБОРДА (3 КОЛОНКИ)
+         ====================================================================== -->
+    <main class="scada-grid">
+      <!-- ====================================================================
+           2. ЛЕВАЯ ПАНЕЛЬ — ОТВЕТСТВЕННЫЙ ЗА ПЕЧЬ, ДАТЧИКИ И УПРАВЛЕНИЕ АВАРИЕЙ
+           ==================================================================== -->
+      <aside class="panel-sensors">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-index">01</span>
+            <h2 class="panel-title">ТЕЛЕМЕТРИЯ И ПОСТ ПЕЧИ</h2>
+          </div>
+          <span class="panel-tag" id="activeControllerBadge">Siemens SIMATIC S7-1518F</span>
+        </div>
+
+        <!-- Паспорт ответственного сталевара за выбранную печь на текущей смене -->
+        <div class="responsible-card">
+          <div class="responsible-top">
+            <span class="responsible-tag" id="activeShiftBadge">СМЕНА 1 (08:00–16:00)</span>
+            <span class="responsible-melt">Плавка <strong id="activeMeltBadge">#261148</strong> · <strong id="activeSteelGrade">Ст3сп</strong> (<span id="activeStageBadge">Плавление</span>)</span>
+          </div>
+          <div class="responsible-main">
+            <div class="responsible-person">
+              <span class="responsible-label">ОТВЕТСТВЕННЫЙ ЗА ПЕЧЬ НА СМЕНЕ:</span>
+              <strong class="responsible-name" id="activeResponsibleName">Иванов Алексей Владимирович</strong>
+              <span class="responsible-sub" id="activeResponsibleSub">Таб. №10421 · Сталевар 6 разряда</span>
+            </div>
+            <button class="btn-change-resp" id="btnQuickAssignResp" type="button" title="Назначить другого ответственного за печь">
+              Назначить
+            </button>
+          </div>
+        </div>
+
+        <div class="sensors-list">
+          <!-- Датчик 1: Температура расплава (°C) -->
+          <article class="sensor-card" id="card-temperature" data-status="normal">
+            <div class="sensor-card-top">
+              <div class="sensor-title-wrap">
+                <svg class="sensor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                </svg>
+                <span class="sensor-name">Температура расплава</span>
+              </div>
+              <span class="sensor-badge" id="badge-temperature" data-status="normal">НОРМА</span>
+            </div>
+            <div class="sensor-value-row">
+              <span class="sensor-value" id="val-temperature">1588 °C</span>
+              <span class="sensor-threshold-hint">Уставка ≤ 1650 °C</span>
+            </div>
+            <div class="sensor-progress-track">
+              <div class="sensor-progress-fill" id="bar-temperature" data-status="normal" style="width: 45%"></div>
+            </div>
+            <div class="sensor-sub" id="sub-temperature">Диапазон: 1500–1720 °C · Темп: +14.8 °C/мин</div>
+          </article>
+
+          <!-- Датчик 2: Ток электродов (кА) -->
+          <article class="sensor-card" id="card-current" data-status="normal">
+            <div class="sensor-card-top">
+              <div class="sensor-title-wrap">
+                <svg class="sensor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                <span class="sensor-name">Ток электродов (3Ф)</span>
+              </div>
+              <span class="sensor-badge" id="badge-current" data-status="normal">НОРМА</span>
+            </div>
+            <div class="sensor-value-row">
+              <span class="sensor-value" id="val-current">51.4 кА</span>
+              <span class="sensor-threshold-hint">Норма: 42–58 кА</span>
+            </div>
+            <div class="sensor-progress-track">
+              <div class="sensor-progress-fill" id="bar-current" data-status="normal" style="width: 52%"></div>
+            </div>
+            <div class="sensor-sub" id="sub-current">Мощность дуги: 42.5 МВт · Уставка ≤ 58 кА</div>
+          </article>
+
+          <!-- Датчик 3: Давление под сводом (Па) -->
+          <article class="sensor-card" id="card-pressure" data-status="normal">
+            <div class="sensor-card-top">
+              <div class="sensor-title-wrap">
+                <svg class="sensor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="9"/>
+                  <path d="M12 12l4-3"/>
+                  <circle cx="12" cy="12" r="1.5"/>
+                </svg>
+                <span class="sensor-name">Давление под сводом</span>
+              </div>
+              <span class="sensor-badge" id="badge-pressure" data-status="normal">НОРМА</span>
+            </div>
+            <div class="sensor-value-row">
+              <span class="sensor-value" id="val-pressure">44 Па</span>
+              <span class="sensor-threshold-hint">Норма: 35–56 Па</span>
+            </div>
+            <div class="sensor-progress-track">
+              <div class="sensor-progress-fill" id="bar-pressure" data-status="normal" style="width: 40%"></div>
+            </div>
+            <div class="sensor-sub" id="sub-pressure">Газоход 4-го отверстия свода · Норма: 35–56 Па</div>
+          </article>
+
+          <!-- Датчик 4: Расход электроэнергии (МВт·ч) -->
+          <article class="sensor-card" id="card-energy" data-status="normal">
+            <div class="sensor-card-top">
+              <div class="sensor-title-wrap">
+                <svg class="sensor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M18 20V10M12 20V4M6 20v-6"/>
+                </svg>
+                <span class="sensor-name">Расход электроэнергии</span>
+              </div>
+              <span class="sensor-badge" id="badge-energy" data-status="normal">НОРМА</span>
+            </div>
+            <div class="sensor-value-row">
+              <span class="sensor-value" id="val-energy">48.25 МВт·ч</span>
+              <span class="sensor-threshold-hint">Лимит ≤ 72 МВт·ч</span>
+            </div>
+            <div class="sensor-progress-track">
+              <div class="sensor-progress-fill" id="bar-energy" data-status="normal" style="width: 55%"></div>
+            </div>
+            <div class="sensor-sub" id="sub-energy">Удельный расход: 357 кВт·ч/т (садка 135 т)</div>
+          </article>
+
+          <!-- Датчик 5: Расход кислорода (м³/ч) -->
+          <article class="sensor-card" id="card-oxygen" data-status="normal">
+            <div class="sensor-card-top">
+              <div class="sensor-title-wrap">
+                <svg class="sensor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+                </svg>
+                <span class="sensor-name">Расход кислорода (O₂)</span>
+              </div>
+              <span class="sensor-badge" id="badge-oxygen" data-status="normal">НОРМА</span>
+            </div>
+            <div class="sensor-value-row">
+              <span class="sensor-value" id="val-oxygen">2450 м³/ч</span>
+              <span class="sensor-threshold-hint">Уставка ≤ 3900 м³/ч</span>
+            </div>
+            <div class="sensor-progress-track">
+              <div class="sensor-progress-fill" id="bar-oxygen" data-status="normal" style="width: 48%"></div>
+            </div>
+            <div class="sensor-sub" id="sub-oxygen">Сводовая фурма O₂ · Стадия: Плавление</div>
+          </article>
+        </div>
+
+        <!-- Мини-блок теплового баланса жидкой ванны -->
+        <div class="heat-balance-box">
+          <div class="heat-balance-head">
+            <span>ТЕПЛОВОЙ БАЛАНС ВАННЫ</span>
+            <span class="water-pill">Вода: <strong id="waterFlowVal">76.4 м³/ч</strong></span>
+          </div>
+          <div class="heat-split-bar">
+            <div class="heat-split-arc" id="heatBarArc" style="width: 86%"></div>
+          </div>
+          <div class="heat-metrics-row">
+            <span>Q дуги: <strong id="arcHeatVal">32.3 МВт</strong></span>
+            <span>Q хим: <strong id="chemHeatVal">5.1 МВт</strong></span>
+            <span>Потери: <strong id="lossHeatVal">8.4 МВт</strong></span>
+          </div>
+        </div>
+
+        <!-- Кнопки управления аварийной симуляцией -->
+        <div class="emergency-controls">
+          <button class="btn-emergency" id="btnEmergency" type="button">
+            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span class="btn-label">Режим симуляции аварии</span>
+          </button>
+
+          <button class="btn-cooling hidden" id="btnCooling" type="button">
+            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v20M17 5l-5 5-5-5M17 19l-5-5-5 5M2 12h20M5 7l5 5-5 5M19 7l-5 5 5 5"/>
+            </svg>
+            <span class="btn-cooling-label">Аварийное охлаждение</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ====================================================================
+           3. ЦЕНТРАЛЬНАЯ ЗОНА — ИНТЕРАКТИВНАЯ 3D-МОДЕЛЬ ПЕЧИ (Three.js)
+           ==================================================================== -->
+      <section class="panel-3d" id="furnace3dViewport">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-index">02</span>
+            <h2 class="panel-title">3D-ЦИФРОВОЙ ДВОЙНИК ПЕЧИ (THREE.JS · GLB)</h2>
+          </div>
+
+          <div class="render-mode-group">
+            <div class="system-status-pill" id="systemStatusPill" data-status="normal">
+              <span class="status-pulse-dot"></span>
+              <span id="systemStatusText">ШТАТНЫЙ РЕЖИМ</span>
+            </div>
+            <button class="mode-chip active" data-render-mode="cutaway" type="button">Разрез</button>
+            <button class="mode-chip" data-render-mode="shell" type="button">Корпус</button>
+            <button class="mode-chip" data-render-mode="thermal" type="button">Тепловизор</button>
+            <button class="mode-chip active" id="btnTogglePins" type="button">3D-Метки</button>
+            <button class="mode-chip" id="btnAutoRotate" type="button">Вращение</button>
+          </div>
+        </div>
+
+        <div class="viewport-canvas-wrap">
+          <div class="three-canvas-container" id="threeCanvasContainer"></div>
+
+          <!-- Верхний HUD-оверлей 3D-сцены -->
+          <div class="hud-overlay-top">
+            <div class="hud-chip">
+              <span class="hud-label">АГРЕГАТ:</span>
+              <strong id="hudFurnaceTitle">ДСП-135 №1 · Сталь Ст3сп</strong>
+            </div>
+            <div class="hud-chip">
+              <span class="hud-label">ОТВЕТСТВЕННЫЙ:</span>
+              <strong id="hudResponsibleName">Иванов А.В. (Смена 1)</strong>
+            </div>
+            <div class="hud-chip">
+              <span class="hud-label">ДУГА / ВОДА:</span>
+              <strong id="hudArcPower">42.5 МВт</strong> · <strong id="hudWaterFlow">76.4 м³/ч</strong>
+            </div>
+          </div>
+
+          <!-- Верхняя компактная плашка АВАРИЯ (когда развёрнутая инструкция свёрнута для обзора 3D) -->
+          <div class="overheat-alert-banner" id="overheatAlertBanner">
+            <div class="overheat-stripe"></div>
+            <div class="overheat-content">
+              <span class="overheat-tag">АВАРИЯ! ПЕРЕГРЕВ &gt; 1650 °C</span>
+              <strong class="overheat-temp" id="overheatTempText">1675 °C</strong>
+              <button class="btn-reopen-sop" id="btnShowSopOverlay" type="button">
+                Открыть инструкцию по устранению (СОП)
+              </button>
+            </div>
+          </div>
+
+          <!-- ================================================================
+               ПЛАШКА «АВАРИЯ» С ПОШАГОВОЙ ИНСТРУКЦИЕЙ ПО УСТРАНЕНИЮ (СОП БМЗ)
+               ================================================================ -->
+          <div class="alarm-sop-overlay hidden" id="alarmInstructionOverlay">
+            <div class="alarm-sop-card">
+              <div class="overheat-stripe"></div>
+
+              <div class="alarm-sop-header">
+                <div class="alarm-sop-title-wrap">
+                  <span class="alarm-siren-badge">ВНИМАНИЕ! АВАРИЯ</span>
+                  <div>
+                    <h3 class="alarm-sop-title" id="sopAlarmTitle">АВАРИЯ НА ПЕЧИ ДСП-1: КРИТИЧЕСКИЙ ПЕРЕГРЕВ ВАННЫ</h3>
+                    <p class="alarm-sop-sub" id="sopAlarmSubtitle">Код: АВ-01 · Ответственный на смене: Иванов А.В. (Таб. №10421)</p>
+                  </div>
+                </div>
+
+                <div class="alarm-sop-telemetry">
+                  <div class="sop-metric-box">
+                    <span class="sop-metric-label">ТЕМПЕРАТУРА</span>
+                    <strong class="sop-metric-val danger-text" id="sopLiveTemp">1668 °C</strong>
+                  </div>
+                  <div class="sop-metric-box">
+                    <span class="sop-metric-label">ВРЕМЯ РЕАКЦИИ</span>
+                    <strong class="sop-metric-val" id="sopReactionTimer">0.0 с</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="alarm-sop-body">
+                <div class="sop-cause-grid">
+                  <div class="sop-cause-item">
+                    <span class="sop-box-label">ПРИЧИНА ВОЗНИКНОВЕНИЯ АВАРИИ:</span>
+                    <p id="sopCauseText">Превышение тепловой нагрузки дуги при снижении расхода охлаждающей воды панелей свода ниже 45 м³/ч.</p>
+                  </div>
+                  <div class="sop-cause-item sop-danger-item">
+                    <span class="sop-box-label">ТЕХНОЛОГИЧЕСКАЯ УГРОЗА (РИСКИ):</span>
+                    <p id="sopDangerText">Размыв футеровки и риск попадания воды в жидкий расплав стали (угроза парового выброса).</p>
+                  </div>
+                </div>
+
+                <div class="sop-checklist-head">
+                  <span>ИНСТРУКЦИЯ ПО УСТРАНЕНИЮ АВАРИИ (ОТМЕТЬТЕ ВЫПОЛНЕННЫЕ ШАГИ СОП):</span>
+                  <span class="sop-progress-text" id="sopProgressCounter">0 / 5 шагов</span>
+                </div>
+                <div class="sop-progress-track">
+                  <div class="sop-progress-fill" id="sopProgressFill" style="width: 0%"></div>
+                </div>
+
+                <div class="sop-steps-list" id="sopStepsList"></div>
+              </div>
+
+              <div class="alarm-sop-footer">
+                <button class="btn-sop-minimize" id="btnMinimizeSopOverlay" type="button">
+                  Свернуть плашку (обзор 3D-печи)
+                </button>
+                <button class="btn-sop-execute" id="btnExecuteSopCooling" type="button">
+                  Выполнить инструкцию и включить аварийное охлаждение
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Нижняя панель кнопок управления ракурсами камеры -->
+          <div class="camera-controls-bar">
+            <div class="camera-presets">
+              <span class="camera-bar-label">РАКУРС КАМЕРЫ:</span>
+              <button class="cam-btn active" data-camera-preset="overview" type="button">Общий вид</button>
+              <button class="cam-btn" data-camera-preset="roof" type="button">Свод печи</button>
+              <button class="cam-btn" data-camera-preset="bath" type="button">Ванна расплава</button>
+              <button class="cam-btn" data-camera-preset="reset" type="button">Сброс камеры</button>
+            </div>
+            <span class="orbit-hint">ЛКМ — Вращение · Колесо — Зум · ПКМ — Панорама</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+           4. ПРАВАЯ И НИЖНЯЯ ПАНЕЛИ — ГРАФИК, УЧЁТ АВАРИЙ ПО ДНЯМ И ЖУРНАЛ
+           ==================================================================== -->
+      <section class="panel-analytics">
+        <!-- Верхний блок: Живой график температуры (Chart.js) -->
+        <div class="analytics-chart-card">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-index">03</span>
+              <h2 class="panel-title">ДИНАМИКА ТЕМПЕРАТУРЫ РАСПЛАВА</h2>
+            </div>
+            <span class="panel-tag" id="chartSubInfo">ДСП-135 №1 · Уставка: 1650 °C</span>
+          </div>
+          <div class="chart-canvas-box">
+            <canvas id="tempChartCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Средний блок: Виджет круглосуточного учёта аварий по дням (7 суток) -->
+        <div class="analytics-daily-card">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-index">04</span>
+              <h2 class="panel-title">УЧЁТ АВАРИЙ ПО ДНЯМ (24/7)</h2>
+            </div>
+            <div class="daily-kpi-inline">
+              <span class="daily-kpi-chip">Сегодня: <strong id="dailyTodayCount">1</strong></span>
+              <span class="daily-kpi-chip">За 7 дн: <strong id="dailyWeekCount">10</strong></span>
+              <button class="btn-open-daily-detail" id="btnOpenDailyRegistry" type="button">Открыть реестр</button>
+            </div>
+          </div>
+          <div class="daily-bars-strip" id="dailyBarsStrip"></div>
+        </div>
+
+        <!-- Нижний блок: Журнал технологических событий и экспорт CSV -->
+        <div class="analytics-log-card">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-index">05</span>
+              <h2 class="panel-title">ЖУРНАЛ СОБЫТИЙ АСУ ТП</h2>
+              <span class="log-count-pill" id="logCountBadge">4 записи</span>
+            </div>
+
+            <button class="btn-export-csv" id="btnExportCsv" type="button">
+              <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Экспорт отчёта (CSV)</span>
+            </button>
+          </div>
+
+          <div class="log-table-head">
+            <span>ВРЕМЯ</span>
+            <span>АГРЕГАТ</span>
+            <span>СТАТУС</span>
+            <span>ТЕХНОЛОГИЧЕСКОЕ СООБЩЕНИЕ</span>
+          </div>
+
+          <div class="event-log-list" id="eventLogList"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ======================================================================
+         МОДАЛЬНОЕ ОКНО №1: ОБЯЗАТЕЛЬНАЯ АВТОРИЗАЦИЯ ПРИ ЗАПУСКЕ / ПОСЛЕ КОНЦА СМЕНЫ,
+         МАТРИЦА ОТВЕТСТВЕННЫХ И ДОБАВЛЕНИЕ ПОЛЬЗОВАТЕЛЕЙ
+         ====================================================================== -->
+    <div class="scada-modal-backdrop" id="staffModal">
+      <div class="scada-modal scada-modal-lg">
+        <div class="modal-header">
+          <div class="modal-title-block">
+            <span class="codex-badge" id="authModalStatusBadge">ОБЯЗАТЕЛЬНАЯ АВТОРИЗАЦИЯ СМЕНЫ</span>
+            <h3 class="modal-title" id="authModalMainTitle">Вход оператора на пост АСУ ТП ДСП (ОАО «БМЗ»)</h3>
+          </div>
+          <!-- Живой индикатор того, что программа продолжает получать данные от печей даже при смене оператора -->
+          <div class="bg-telemetry-ticker">
+            <span class="plc-online-dot"></span>
+            <span id="modalLivePlcTicker">Фоновый опрос ПЛК 24/7 активен: ДСП-1 (1588 °C) · ДСП-2 (1618 °C) · ДСП-3 (1572 °C)</span>
+          </div>
+          <button class="modal-close-btn hidden" id="btnCloseStaffModal" type="button" title="Закрыть окно">&times;</button>
+        </div>
+
+        <!-- Вкладки модального окна персонала -->
+        <div class="modal-tabs">
+          <button class="modal-tab-btn active" data-staff-tab="auth" type="button">1. Авторизация на смену (Вход)</button>
+          <button class="modal-tab-btn" data-staff-tab="matrix" type="button">2. Назначение ответственных за печи (Матрица смен)</button>
+          <button class="modal-tab-btn" data-staff-tab="users" type="button">3. Добавление пользователей (Штат)</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- ВКЛАДКА 1: Вход оператора на смену -->
+          <div class="modal-tab-pane active" id="staffPane-auth">
+            <div class="auth-split-grid">
+              <form class="auth-form-card" id="loginForm">
+                <h4 class="pane-subtitle">Введите номер пользователя и пароль</h4>
+                <p class="pane-desc" id="loginPromptBanner">
+                  Для доступа к пульту управления ДСП введите ваш табельный номер и пароль. На фоне приём телеметрии от печей не прерывается.
+                </p>
+
+                <div class="form-field">
+                  <label for="loginShiftSelect">Заступающая рабочая смена</label>
+                  <select id="loginShiftSelect" class="scada-input">
+                    <option value="1">Смена 1 (Дневная · 08:00–16:00 · Бригада А)</option>
+                    <option value="2">Смена 2 (Вечерняя · 16:00–00:00 · Бригада Б)</option>
+                    <option value="3">Смена 3 (Ночная · 00:00–08:00 · Бригада В)</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="loginBadgeInput">Табельный номер пользователя</label>
+                  <input id="loginBadgeInput" type="text" class="scada-input" placeholder="Например: 10421, 20421 или 10105" required />
+                </div>
+
+                <div class="form-field">
+                  <label for="loginPinInput">Пароль (ПИН-код)</label>
+                  <input id="loginPinInput" type="password" class="scada-input" placeholder="Введите пароль (1111, 2222, 3333 или 0000)" required />
+                </div>
+
+                <div class="form-error-msg" id="loginErrorMsg"></div>
+
+                <button class="btn-primary-codex" type="submit">Войти и принять смену на посту</button>
+              </form>
+
+              <div class="quick-roster-card">
+                <h4 class="pane-subtitle">Справочник табельных номеров по сменам (клик подставляет номер и смену)</h4>
+                <div class="roster-cards-grid" id="quickRosterGrid"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ВКЛАДКА 2: Матрица назначения ответственных за печи по сменам -->
+          <div class="modal-tab-pane" id="staffPane-matrix">
+            <div class="matrix-intro">
+              <div>
+                <h4 class="pane-subtitle">Матрица закрепления ответственных сталеваров за печи ДСП-1, ДСП-2, ДСП-3 по сменам</h4>
+                <p class="pane-desc">Назначьте ответственного сотрудника для каждой печи на Смену 1, Смену 2 и Смену 3. За одну и ту же печь на разных сменах отвечают разные люди.</p>
+              </div>
+            </div>
+
+            <div class="matrix-table-wrap">
+              <table class="scada-table">
+                <thead>
+                  <tr>
+                    <th>Рабочая смена</th>
+                    <th>Часы вахты</th>
+                    <th>Ответственный за ДСП-1 (Ст3сп)</th>
+                    <th>Ответственный за ДСП-2 (09Г2С)</th>
+                    <th>Ответственный за ДСП-3 (К70 Корд)</th>
+                  </tr>
+                </thead>
+                <tbody id="shiftMatrixTbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ВКЛАДКА 3: Добавление новых пользователей и управление штатом -->
+          <div class="modal-tab-pane" id="staffPane-users">
+            <div class="auth-split-grid">
+              <form class="auth-form-card" id="addUserForm">
+                <h4 class="pane-subtitle">Регистрация нового пользователя ЭСПЦ-2</h4>
+                <p class="pane-desc">Добавьте нового сталевара или мастера и при необходимости сразу закрепите его за печью и сменой.</p>
+
+                <div class="form-row-2">
+                  <div class="form-field">
+                    <label for="newBadgeInput">Табельный №</label>
+                    <input id="newBadgeInput" type="text" class="scada-input" placeholder="Напр. 40510" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="newPinInput">Пароль (ПИН-код)</label>
+                    <input id="newPinInput" type="text" class="scada-input" value="1234" required />
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="newFullNameInput">ФИО сотрудника полностью</label>
+                  <input id="newFullNameInput" type="text" class="scada-input" placeholder="Напр. Соколов Андрей Викторович" required />
+                </div>
+
+                <div class="form-field">
+                  <label for="newRoleSelect">Должность / Квалификация</label>
+                  <select id="newRoleSelect" class="scada-input">
+                    <option value="Сталевар 6 разряда">Сталевар 6 разряда</option>
+                    <option value="Сталевар 5 разряда">Сталевар 5 разряда</option>
+                    <option value="Первый подручный сталевара">Первый подручный сталевара</option>
+                    <option value="Мастер смены ЭСПЦ-2">Мастер смены ЭСПЦ-2 (Доступ ко всем печам)</option>
+                  </select>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-field">
+                    <label for="newAssignShiftSelect">Назначить на смену</label>
+                    <select id="newAssignShiftSelect" class="scada-input">
+                      <option value="0">Без автоназначения</option>
+                      <option value="1">Смена 1 (08:00–16:00)</option>
+                      <option value="2">Смена 2 (16:00–00:00)</option>
+                      <option value="3">Смена 3 (00:00–08:00)</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="newAssignFurnaceSelect">Закрепить за печью</label>
+                    <select id="newAssignFurnaceSelect" class="scada-input">
+                      <option value="0">Не выбрана</option>
+                      <option value="1">ДСП-1</option>
+                      <option value="2">ДСП-2</option>
+                      <option value="3">ДСП-3</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-error-msg" id="addUserErrorMsg"></div>
+
+                <button class="btn-primary-codex" type="submit">Добавить пользователя в штат</button>
+              </form>
+
+              <div class="quick-roster-card">
+                <h4 class="pane-subtitle">Штатный список сотрудников ЭСПЦ-2</h4>
+                <div class="users-table-wrap">
+                  <table class="scada-table">
+                    <thead>
+                      <tr>
+                        <th>Таб. №</th>
+                        <th>ФИО сотрудника</th>
+                        <th>Должность</th>
+                        <th>Закрепление по сменам</th>
+                        <th>Действие</th>
+                      </tr>
+                    </thead>
+                    <tbody id="usersListTbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================
+         МОДАЛЬНОЕ ОКНО №2: СУТОЧНЫЙ УЧЁТ И АНАЛИТИКА АВАРИЙ ПО ДНЯМ (24/7)
+         ====================================================================== -->
+    <div class="scada-modal-backdrop hidden" id="incidentsModal">
+      <div class="scada-modal scada-modal-lg">
+        <div class="modal-header">
+          <div class="modal-title-block">
+            <span class="codex-badge">АРХИВ 24/7 · КОНТРОЛЬ ЧС</span>
+            <h3 class="modal-title">Система учёта аварий по дням, сменам и ответственным сталеварам</h3>
+          </div>
+          <button class="modal-close-btn" id="btnCloseIncidentsModal" type="button">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="incidents-kpi-grid">
+            <div class="inc-kpi-card">
+              <span class="inc-kpi-label">АВАРИЙ ЗА СЕГОДНЯ (ТЕКУЩИЕ СУТКИ)</span>
+              <strong class="inc-kpi-val" id="modalKpiToday">1</strong>
+            </div>
+            <div class="inc-kpi-card">
+              <span class="inc-kpi-label">АВАРИЙ ЗА ПОСЛЕДНИЕ 7 СУТОК</span>
+              <strong class="inc-kpi-val" id="modalKpiWeek">10</strong>
+            </div>
+            <div class="inc-kpi-card">
+              <span class="inc-kpi-label">АКТИВНЫХ НЕУСТРАНЁННЫХ ЧС</span>
+              <strong class="inc-kpi-val danger-text" id="modalKpiActive">0</strong>
+            </div>
+            <div class="inc-kpi-card">
+              <span class="inc-kpi-label">НАИБОЛЕЕ НАГРУЖЕННЫЙ АГРЕГАТ</span>
+              <strong class="inc-kpi-val accent-text" id="modalKpiTopFurnace">ДСП-1</strong>
+            </div>
+          </div>
+
+          <div class="modal-daily-chart-box">
+            <div class="modal-daily-head">
+              <span>ДИНАМИКА КОЛИЧЕСТВА АВАРИЙ ПО ДНЯМ (НАЖМИТЕ НА ДЕНЬ ДЛЯ ФИЛЬТРАЦИИ)</span>
+              <button class="btn-reset-day-filter" id="btnResetDayFilter" type="button">Показать все дни</button>
+            </div>
+            <div class="modal-daily-bars" id="modalDailyBars"></div>
+          </div>
+
+          <div class="incidents-filters-bar">
+            <div class="filter-group">
+              <label for="filterIncidentDate">Дата (День):</label>
+              <select id="filterIncidentDate" class="scada-input scada-input-sm">
+                <option value="ALL">Все дни (Весь архив)</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label for="filterIncidentShift">Смена:</label>
+              <select id="filterIncidentShift" class="scada-input scada-input-sm">
+                <option value="ALL">Все смены (1, 2, 3)</option>
+                <option value="1">Смена 1 (08:00–16:00)</option>
+                <option value="2">Смена 2 (16:00–00:00)</option>
+                <option value="3">Смена 3 (00:00–08:00)</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label for="filterIncidentFurnace">Печь:</label>
+              <select id="filterIncidentFurnace" class="scada-input scada-input-sm">
+                <option value="ALL">Все печи (ДСП-1..3)</option>
+                <option value="1">ДСП-1</option>
+                <option value="2">ДСП-2</option>
+                <option value="3">ДСП-3</option>
+              </select>
+            </div>
+
+            <button class="btn-export-csv" id="btnExportIncidentsCsv" type="button">
+              <span>Выгрузить реестр в CSV</span>
+            </button>
+          </div>
+
+          <div class="incidents-table-wrap">
+            <table class="scada-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Дата (Сутки)</th>
+                  <th>Время</th>
+                  <th>Смена</th>
+                  <th>Печь</th>
+                  <th>Код и описание аварии</th>
+                  <th>Пик T (°C)</th>
+                  <th>Ответственный сталевар на смене</th>
+                  <th>Статус</th>
+                </tr>
+              </thead>
+              <tbody id="incidentsTableTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Контейнер для всплывающих уведомлений SCADA -->
+    <div class="toast-container" id="toastContainer"></div>
+  </div>
+
+  <!-- Точка входа архитектуры MVP (ES6-модули) -->
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
